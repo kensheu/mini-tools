@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mini Tools</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Microsoft JhengHei', 'Noto Sans TC', system-ui, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 60px 20px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 60px;
+    }
+    header .logo {
+      font-size: 13px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: #e94560;
+      margin-bottom: 12px;
+    }
+    header h1 {
+      font-size: 36px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+    }
+    header p {
+      font-size: 15px;
+      color: #888;
+      max-width: 480px;
+      line-height: 1.7;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 28px;
+      width: 100%;
+      max-width: 960px;
+    }
+
+    .tool-card {
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 16px;
+      padding: 32px 28px;
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .tool-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #e94560, #0f3460);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .tool-card:hover {
+      transform: translateY(-4px);
+      border-color: #e94560;
+      box-shadow: 0 12px 32px rgba(233, 69, 96, 0.15);
+    }
+    .tool-card:hover::before {
+      opacity: 1;
+    }
+
+    .card-icon { font-size: 36px; line-height: 1; }
+    .card-title { font-size: 18px; font-weight: 700; color: #ffffff; letter-spacing: 0.5px; }
+    .card-subtitle { font-size: 12px; color: #e94560; letter-spacing: 2px; text-transform: uppercase; font-weight: 600; }
+    .card-desc { font-size: 14px; color: #888; line-height: 1.7; flex: 1; }
+    .card-arrow { font-size: 13px; color: #e94560; align-self: flex-end; letter-spacing: 1px; transition: transform 0.2s; }
+    .tool-card:hover .card-arrow { transform: translateX(4px); }
+
+    footer {
+      margin-top: 80px;
+      font-size: 13px;
+      color: #444;
+      letter-spacing: 1px;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">Mini Tools</div>
+    <h1>線上小工具集</h1>
+    <p>純前端工具，無需上傳伺服器，所有處理皆在瀏覽器本機完成。</p>
+  </header>
+
+  <main class="grid">
+
+    <a class="tool-card" href="watermark.html">
+      <div class="card-icon">💧</div>
+      <div class="card-subtitle">Image Tool</div>
+      <div class="card-title">圖片浮水印</div>
+      <div class="card-desc">為圖片加上文字浮水印，可自訂位置、透明度、大小與旋轉角度，支援填滿模式。</div>
+      <div class="card-arrow">開啟工具 →</div>
+    </a>
+
+    <a class="tool-card" href="image-combiner.html">
+      <div class="card-icon">🖼️</div>
+      <div class="card-subtitle">Image Tool</div>
+      <div class="card-title">圖片組合</div>
+      <div class="card-desc">將多張圖片排列組合成單一圖片，支援左右、上下、格狀與自由排版，可匯出 PNG 或 JPG。</div>
+      <div class="card-arrow">開啟工具 →</div>
+    </a>
+
+    <a class="tool-card" href="csv-sorter.html">
+      <div class="card-icon">📊</div>
+      <div class="card-subtitle">CSV Tool</div>
+      <div class="card-title">彙總報表排序</div>
+      <div class="card-desc">匯入 CSV 彙總報表，依日期與時段自動排序後重新下載，支援拖放上傳。</div>
+      <div class="card-arrow">開啟工具 →</div>
+    </a>
+
+  </main>
+
+  <footer>All processing done locally in your browser &nbsp;·&nbsp; No data uploaded</footer>
+
+</body>
+</html>

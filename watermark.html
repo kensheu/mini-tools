@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>圖片浮水印工具</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Microsoft JhengHei', 'Noto Sans TC', system-ui, sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  header {
+    background: linear-gradient(135deg, #16213e, #0f3460);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+    flex-shrink: 0;
+  }
+  header h1 {
+    font-size: 22px;
+    font-weight: 600;
+    color: #e94560;
+    letter-spacing: 1px;
+  }
+  header span {
+    font-size: 15px;
+    color: #888;
+  }
+
+  #main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── 左側控制面板 ── */
+  #panel {
+    width: 300px;
+    min-width: 300px;
+    background: #16213e;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    border-right: 1px solid #0f3460;
+  }
+  #panel::-webkit-scrollbar { width: 6px; }
+  #panel::-webkit-scrollbar-track { background: #16213e; }
+  #panel::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 3px; }
+
+  .section {
+    background: #0f3460;
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .section-title {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #e94560;
+    margin-bottom: 2px;
+  }
+
+  label {
+    font-size: 15px;
+    color: #aaa;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  label span { color: #ccc; }
+
+  /* 上傳區 */
+  .upload-area {
+    border: 2px dashed #e94560;
+    border-radius: 8px;
+    padding: 20px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+    position: relative;
+  }
+  .upload-area:hover { background: rgba(233,69,96,0.1); }
+  .upload-area.has-image { border-color: #4caf50; }
+  .upload-area input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer;
+  }
+  .upload-icon { font-size: 34px; margin-bottom: 6px; }
+  .upload-text { font-size: 16px; color: #ccc; }
+  .upload-hint { font-size: 13px; color: #666; margin-top: 4px; }
+  #file-name { font-size: 13px; color: #4caf50; margin-top: 4px; word-break: break-all; }
+
+  /* textarea */
+  textarea {
+    width: 100%;
+    background: #1a1a2e;
+    border: 1px solid #0f3460;
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 16px;
+    padding: 10px;
+    resize: vertical;
+    min-height: 80px;
+    font-family: inherit;
+    transition: border-color 0.2s;
+  }
+  textarea:focus { outline: none; border-color: #e94560; }
+
+  /* range slider */
+  .range-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  input[type="range"] {
+    flex: 1;
+    height: 4px;
+    accent-color: #e94560;
+    cursor: pointer;
+  }
+  .range-val {
+    font-size: 15px;
+    color: #e94560;
+    min-width: 44px;
+    text-align: right;
+    font-weight: 600;
+  }
+
+  /* 文字樣式按鈕 */
+  .style-btns {
+    display: flex;
+    gap: 8px;
+  }
+  .style-btn {
+    flex: 1;
+    padding: 8px 0;
+    background: #1a1a2e;
+    border: 2px solid #0f3460;
+    border-radius: 6px;
+    color: #aaa;
+    font-size: 17px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    line-height: 1;
+  }
+  .style-btn:hover { border-color: #e94560; color: #fff; }
+  .style-btn.active { background: #e94560; border-color: #e94560; color: #fff; }
+  #btn-bold   { font-weight: 900; overflow: hidden; }
+  #btn-italic { font-style: italic; font-weight: 600; }
+  #btn-under  { text-decoration: underline; }
+  #btn-strike { text-decoration: line-through; }
+
+  .color-presets {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .color-dot {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform 0.15s, border-color 0.15s;
+  }
+  .color-dot:hover { transform: scale(1.2); }
+  .color-dot.active { border-color: #fff; transform: scale(1.15); }
+
+  /* select */
+  select {
+    background: #1a1a2e;
+    border: 1px solid #0f3460;
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 16px;
+    padding: 8px 12px;
+    cursor: pointer;
+    width: 100%;
+  }
+  select:focus { outline: none; border-color: #e94560; }
+
+  /* Tooltip icon */
+  .tooltip-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    background: #0f3460;
+    border: 1px solid #4a90e2;
+    color: #4a90e2;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: default;
+    margin-left: 6px;
+    flex-shrink: 0;
+  }
+
+  /* 全域 tooltip（fixed，不受 overflow 裁切） */
+  #g-tooltip {
+    display: none;
+    position: fixed;
+    background: #0f3460;
+    border: 1px solid #4a90e2;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #ccc;
+    line-height: 1.8;
+    white-space: nowrap;
+    z-index: 9999;
+    pointer-events: none;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  }
+
+  /* 下載按鈕 */
+  #btn-download {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #e94560, #c62a47);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 17px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    letter-spacing: 1px;
+  }
+  #btn-download:hover { opacity: 0.9; }
+  #btn-download:active { transform: scale(0.98); }
+  #btn-download:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  #btn-reset, #btn-tile {
+    padding: 14px 16px;
+    background: #1a1a2e;
+    border: 2px solid #0f3460;
+    border-radius: 8px;
+    color: #aaa;
+    font-size: 15px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+    white-space: nowrap;
+  }
+  #btn-reset:hover, #btn-tile:hover { border-color: #e94560; color: #fff; }
+  #btn-tile.active { background: #e94560; border-color: #e94560; color: #fff; }
+
+  /* ── 右側預覽區 ── */
+  #preview {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #0d0d1a;
+    overflow: auto;
+    padding: 20px;
+    gap: 12px;
+  }
+
+  /* 預覽上方工具列 */
+  #toolbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 10px;
+    padding: 10px 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 100%;
+    max-width: 800px;
+  }
+  #toolbar .tb-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #toolbar .tb-label {
+    font-size: 13px;
+    color: #888;
+    white-space: nowrap;
+  }
+  #toolbar .tb-divider {
+    width: 1px;
+    height: 28px;
+    background: #0f3460;
+  }
+
+  #canvas-wrap {
+    position: relative;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  #canvas {
+    display: block;
+    max-width: 100%;
+  }
+
+  #hint {
+    font-size: 15px;
+    color: #555;
+    text-align: center;
+    line-height: 1.8;
+  }
+  #hint strong { color: #888; }
+
+  /* 操作提示 badge */
+  .badge {
+    display: inline-block;
+    background: #0f3460;
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 14px;
+    color: #aaa;
+    margin: 2px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="font-size:22px;">🔏</div>
+  <h1>圖片浮水印工具</h1>
+  <span>上傳圖片 → 編輯浮水印 → 下載</span>
+  <a href="index.html" style="margin-left:auto;font-size:13px;color:#888;text-decoration:none;letter-spacing:1px;white-space:nowrap;transition:color 0.2s;" onmouseover="this.style.color='#e94560'" onmouseout="this.style.color='#888'">← 返回首頁</a>
+</header>
+
+<div id="main">
+
+  <!-- 左側控制面板 -->
+  <aside id="panel">
+
+    <!-- 上傳 -->
+    <div class="section">
+      <div class="section-title" style="display:flex;align-items:center;gap:6px;">
+        📁 上傳圖片
+        <span class="tooltip-icon"
+              data-tooltip="程式本身無大小限制&#10;建議不超過 20MB&#10;檔案過大可能導致瀏覽器變慢">?</span>
+      </div>
+      <div class="upload-area" id="upload-area">
+        <input type="file" id="input-image" accept="image/*">
+        <div class="upload-icon">🖼️</div>
+        <div class="upload-text">點擊或拖曳圖片至此</div>
+        <div class="upload-hint">支援 JPG、PNG、WebP 等格式</div>
+        <div id="file-name"></div>
+      </div>
+    </div>
+
+    <!-- 文字 -->
+    <div class="section">
+      <div class="section-title">✏️ 浮水印文字</div>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <span style="font-size:15px;color:#ccc;">文字樣式</span>
+        <div class="style-btns">
+          <button class="style-btn" id="btn-bold"   title="粗體">B</button>
+          <button class="style-btn" id="btn-italic" title="斜體">I</button>
+          <button class="style-btn" id="btn-under"  title="底線">U</button>
+          <button class="style-btn" id="btn-strike" title="刪除線">S</button>
+        </div>
+      </div>
+      <label>
+        <span>文字內容（可換行）</span>
+        <textarea id="input-text" rows="3" placeholder="輸入浮水印文字">僅供OO公司辦理XX使用，
+禁止轉作其他用途。</textarea>
+      </label>
+    </div>
+
+    <!-- 外觀 -->
+    <div class="section">
+      <div class="section-title">🎨 外觀設定</div>
+      <label>
+        <span>文字顏色</span>
+        <div class="color-presets" id="color-presets"></div>
+      </label>
+      <label>
+        <span>透明度</span>
+        <div class="range-row">
+          <input type="range" id="input-opacity" min="0" max="100" value="60">
+          <span class="range-val" id="val-opacity">60%</span>
+        </div>
+      </label>
+    </div>
+
+    <!-- 下載 -->
+    <div class="section">
+      <div class="section-title">💾 下載</div>
+      <label>
+        <span style="display:flex;align-items:center;">
+          下載格式
+          <span class="tooltip-icon"
+                data-tooltip="JPEG：自動補白底・檔案較小・適合身分證&#10;PNG：保留透明背景・無損畫質・檔案較大">?</span>
+        </span>
+        <select id="input-format">
+          <option value="jpg" selected>JPG</option>
+          <option value="png">PNG</option>
+        </select>
+      </label>
+      <button id="btn-download" disabled>⬇ 下載圖片</button>
+    </div>
+
+  </aside>
+
+  <!-- 右側預覽 -->
+  <section id="preview">
+    <div style="display:flex;gap:8px;">
+      <button id="btn-reset">↺ 重製浮水印</button>
+      <button id="btn-tile">⊞ 填滿</button>
+    </div>
+    <div id="canvas-wrap">
+      <canvas id="canvas" width="600" height="400"></canvas>
+    </div>
+    <div id="hint">
+      <strong>操作說明</strong><br>
+      <span class="badge">🖱 拖曳</span> 移動浮水印位置
+      <span class="badge">↻ 拖曳圓點</span> 旋轉文字
+      <span class="badge">🖱 滾輪</span> 縮放大小
+      <span class="badge">滑桿</span> 調整透明度
+    </div>
+  </section>
+
+</div>
+
+<div id="g-tooltip"></div>
+
+<script>
+// ════════════════════════════════════════
+// 狀態物件
+// ════════════════════════════════════════
+const state = {
+  image: null,
+  text: '僅供OO公司辦理XX使用，\n禁止轉作其他用途。',
+  fontSize: 40,
+  bold: false,
+  italic: false,
+  underline: false,
+  strikethrough: false,
+  color: '#ff0000',
+  opacity: 0.6,
+  tiled: false,
+  originalFileName: '',
+  rotation: -30,   // 度數
+  x: 300,
+  y: 200,
+
+  dragging: false,
+  dragOffsetX: 0,
+  dragOffsetY: 0,
+
+  rotating: false,
+  rotateStartAngle: 0,
+  rotateStartMouseAngle: 0,
+
+  // 每次 render 後更新
+  handlePos: { x: 0, y: 0 },
+};
+
+// ════════════════════════════════════════
+// DOM 元素
+// ════════════════════════════════════════
+const canvas      = document.getElementById('canvas');
+const ctx         = canvas.getContext('2d');
+const inputImage  = document.getElementById('input-image');
+const uploadArea  = document.getElementById('upload-area');
+const fileName    = document.getElementById('file-name');
+const inputText   = document.getElementById('input-text');
+const inputOpac   = document.getElementById('input-opacity');
+const valOpac     = document.getElementById('val-opacity');
+const inputFormat = document.getElementById('input-format');
+const btnDownload = document.getElementById('btn-download');
+const colorPresets = document.getElementById('color-presets');
+
+// ════════════════════════════════════════
+// 色彩預設
+// ════════════════════════════════════════
+const PRESETS = [
+  { color: '#ff0000', name: '紅色' },
+  { color: '#ff6600', name: '橘色' },
+  { color: '#ffcc00', name: '黃色' },
+  { color: '#27ae60', name: '綠色' },
+  { color: '#4a90e2', name: '藍色' },
+  { color: '#8e44ad', name: '紫色' },
+  { color: '#808080', name: '灰色' },
+  { color: '#ffffff', name: '白色' },
+  { color: '#000000', name: '黑色' },
+];
+PRESETS.forEach(({ color: c, name }) => {
+  const dot = document.createElement('div');
+  dot.className = 'color-dot' + (c === state.color ? ' active' : '');
+  dot.style.background = c;
+  dot.style.outline = c === '#ffffff' ? '1px solid #555' : '';
+  dot.title = name;
+  dot.addEventListener('click', () => {
+    state.color = c;
+    document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
+    dot.classList.add('active');
+    render();
+  });
+  colorPresets.appendChild(dot);
+});
+
+// ════════════════════════════════════════
+// 工具函式
+// ════════════════════════════════════════
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width  / rect.width;
+  const scaleY = canvas.height / rect.height;
+  let cx, cy;
+  if (e.touches) {
+    cx = e.touches[0].clientX;
+    cy = e.touches[0].clientY;
+  } else {
+    cx = e.clientX;
+    cy = e.clientY;
+  }
+  return {
+    x: (cx - rect.left) * scaleX,
+    y: (cy - rect.top)  * scaleY,
+  };
+}
+
+function buildFont() {
+  const style = (state.italic ? 'italic ' : '') + (state.bold ? 'bold ' : '');
+  return `${style}${state.fontSize}px 'Microsoft JhengHei', 'Noto Sans TC', Arial, sans-serif`;
+}
+
+/** 計算文字量測（不帶旋轉） */
+function measureText() {
+  ctx.save();
+  ctx.font = buildFont();
+  const lines = state.text.split('\n').filter(l => l.length > 0) || [''];
+  const lineHeight = state.fontSize * 1.3;
+  let maxW = 0;
+  lines.forEach(l => {
+    const m = ctx.measureText(l);
+    if (m.width > maxW) maxW = m.width;
+  });
+  ctx.restore();
+  const totalH = lines.length === 1
+    ? state.fontSize
+    : (lines.length - 1) * lineHeight + state.fontSize;
+  return { w: maxW, h: totalH, lineHeight, lines };
+}
+
+/** 旋轉一個點（以原點為中心） */
+function rotatePoint(x, y, rad) {
+  return {
+    x: Math.cos(rad) * x - Math.sin(rad) * y,
+    y: Math.sin(rad) * x + Math.cos(rad) * y,
+  };
+}
+
+/** 更新旋轉控制點座標 */
+function updateHandlePos(metrics) {
+  const rad = state.rotation * Math.PI / 180;
+  const rotLocal = rotatePoint(0, -metrics.h / 2 - 50, rad);
+  state.handlePos = { x: state.x + rotLocal.x, y: state.y + rotLocal.y };
+}
+
+/** 命中測試：滑鼠是否在文字矩形內（帶 padding） */
+function isInsideBBox(mx, my, metrics, pad = 10) {
+  const rad = -state.rotation * Math.PI / 180;
+  const dx = mx - state.x;
+  const dy = my - state.y;
+  const lx = Math.cos(rad) * dx - Math.sin(rad) * dy;
+  const ly = Math.sin(rad) * dx + Math.cos(rad) * dy;
+  return Math.abs(lx) <= metrics.w / 2 + pad &&
+         Math.abs(ly) <= metrics.h / 2 + pad;
+}
+
+/** 命中測試：旋轉控制點 */
+function isOnHandle(mx, my) {
+  const dx = mx - state.handlePos.x;
+  const dy = my - state.handlePos.y;
+  return dx * dx + dy * dy <= 14 * 14;
+}
+
+
+// ════════════════════════════════════════
+// 核心繪圖
+// ════════════════════════════════════════
+
+/** 繪製浮水印（純文字，不含控制點） */
+function drawWatermarkText(c) {
+  const metrics = measureText();
+  c.save();
+  c.globalAlpha = state.opacity;
+  c.font = buildFont();
+  c.fillStyle = state.color;
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.translate(state.x, state.y);
+  c.rotate(state.rotation * Math.PI / 180);
+  const startY = -(metrics.lines.length - 1) * metrics.lineHeight / 2;
+  metrics.lines.forEach((line, i) => {
+    const lineY = startY + i * metrics.lineHeight;
+    c.fillText(line, 0, lineY);
+    // 底線 / 刪除線（canvas 不原生支援，手動繪製）
+    if (state.underline || state.strikethrough) {
+      const lw = c.measureText(line).width;
+      const thickness = Math.max(1, state.fontSize * 0.05);
+      c.fillStyle = state.color;
+      if (state.underline)     c.fillRect(-lw / 2, lineY + state.fontSize * 0.38, lw, thickness);
+      if (state.strikethrough) c.fillRect(-lw / 2, lineY,                          lw, thickness);
+    }
+  });
+  c.restore();
+}
+
+/** 2D 網格鋪滿浮水印（沿文字方向 + 垂直方向都重複，邊緣自然裁切） */
+function drawTiledWatermark(c, totalW, totalH) {
+  const metrics = measureText();
+  const rad = state.rotation * Math.PI / 180;
+  const gapAlong = state.fontSize;   // 文字方向的間距
+  const gapPerp  = state.fontSize;   // 垂直方向的間距
+
+  // 沿文字方向的步進向量
+  const saX = Math.cos(rad) * (metrics.w + gapAlong);
+  const saY = Math.sin(rad) * (metrics.w + gapAlong);
+  // 垂直文字方向的步進向量（錯開半格製造磚砌效果）
+  const spX = -Math.sin(rad) * (metrics.h + gapPerp);
+  const spY =  Math.cos(rad) * (metrics.h + gapPerp);
+
+  const diagLen = Math.sqrt(totalW * totalW + totalH * totalH);
+  const nA = Math.ceil(diagLen / (Math.sqrt(saX*saX + saY*saY) || 1)) + 2;
+  const nP = Math.ceil(diagLen / (Math.sqrt(spX*spX + spY*spY) || 1)) + 2;
+
+  c.save();
+  c.globalAlpha = state.opacity;
+  c.font = buildFont();
+  c.fillStyle = state.color;
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+
+  for (let j = -nP; j <= nP; j++) {
+    for (let i = -nA; i <= nA; i++) {
+      // 奇數排錯開半格
+      const shift = (j % 2 !== 0) ? 0.5 : 0;
+      const x = state.x + (i + shift) * saX + j * spX;
+      const y = state.y + (i + shift) * saY + j * spY;
+      // 簡單剔除明顯超出範圍的
+      if (x < -metrics.w*3 || x > totalW + metrics.w*3) continue;
+      if (y < -metrics.h*3 || y > totalH + metrics.h*3) continue;
+
+      c.save();
+      c.translate(x, y);
+      c.rotate(rad);
+      const startY = -(metrics.lines.length - 1) * metrics.lineHeight / 2;
+      metrics.lines.forEach((line, li) => {
+        const lineY = startY + li * metrics.lineHeight;
+        c.fillText(line, 0, lineY);
+        if (state.underline || state.strikethrough) {
+          const lw = c.measureText(line).width;
+          const th = Math.max(1, state.fontSize * 0.05);
+          c.fillStyle = state.color;
+          if (state.underline)     c.fillRect(-lw/2, lineY + state.fontSize*0.38, lw, th);
+          if (state.strikethrough) c.fillRect(-lw/2, lineY, lw, th);
+        }
+      });
+      c.restore();
+    }
+  }
+  c.restore();
+}
+
+/** 主渲染函式 */
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 背景/圖片
+  if (state.image) {
+    ctx.drawImage(state.image, 0, 0, canvas.width, canvas.height);
+  } else {
+    // 佔位符
+    ctx.fillStyle = '#2a2a3e';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#444';
+    ctx.setLineDash([8, 6]);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#555';
+    ctx.font = '20px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('請在左側上傳圖片', canvas.width / 2, canvas.height / 2 - 16);
+    ctx.font = '13px sans-serif';
+    ctx.fillStyle = '#444';
+    ctx.fillText('支援 JPG、PNG、WebP 格式', canvas.width / 2, canvas.height / 2 + 18);
+  }
+
+  if (!state.text.trim()) return;
+
+  // 繪製浮水印文字
+  if (state.tiled) drawTiledWatermark(ctx, canvas.width, canvas.height);
+  else             drawWatermarkText(ctx);
+
+  // 計算量測並更新 handle 位置
+  const metrics = measureText();
+  updateHandlePos(metrics);
+
+  // 若 hover 或拖曳中，顯示 bbox 框線
+  drawBBoxAndHandle(metrics);
+}
+
+/** 繪製虛線外框 + 旋轉控制點 */
+function drawBBoxAndHandle(metrics) {
+  const rad = state.rotation * Math.PI / 180;
+  const hw = metrics.w / 2 + 8;
+  const hh = metrics.h / 2 + 8;
+
+  // 四個角的 canvas 座標
+  const corners = [
+    { x: -hw, y: -hh }, { x: hw, y: -hh },
+    { x:  hw, y:  hh }, { x: -hw, y:  hh },
+  ].map(p => {
+    const r = rotatePoint(p.x, p.y, rad);
+    return { x: state.x + r.x, y: state.y + r.y };
+  });
+
+  // 上邊中點
+  const tMid = rotatePoint(0, -hh, rad);
+  const topMid = { x: state.x + tMid.x, y: state.y + tMid.y };
+
+  ctx.save();
+
+  // 虛線框
+  ctx.globalAlpha = 0.8;
+  ctx.strokeStyle = '#4a90e2';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 3]);
+  ctx.beginPath();
+  ctx.moveTo(corners[0].x, corners[0].y);
+  for (let i = 1; i < 4; i++) ctx.lineTo(corners[i].x, corners[i].y);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 連接線：上邊中點 → 旋轉控制點
+  ctx.strokeStyle = '#4a90e2';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(topMid.x, topMid.y);
+  ctx.lineTo(state.handlePos.x, state.handlePos.y);
+  ctx.stroke();
+
+  // 旋轉控制點
+  ctx.beginPath();
+  ctx.arc(state.handlePos.x, state.handlePos.y, 12, 0, Math.PI * 2);
+  ctx.fillStyle = 'white';
+  ctx.fill();
+  ctx.strokeStyle = '#4a90e2';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#4a90e2';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('↻', state.handlePos.x, state.handlePos.y + 1);
+
+  // 中心點
+  ctx.beginPath();
+  ctx.arc(state.x, state.y, 4, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(74,144,226,0.8)';
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ════════════════════════════════════════
+// 事件：圖片上傳
+// ════════════════════════════════════════
+function loadImage(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      state.image = img;
+      // 計算 canvas 尺寸（最大 800×600，保持比例）
+      const maxW = 800, maxH = 560;
+      const ratio = Math.min(maxW / img.width, maxH / img.height, 1);
+      canvas.width  = Math.round(img.width  * ratio);
+      canvas.height = Math.round(img.height * ratio);
+      // 浮水印預設位置：Canvas 中央
+      state.x = canvas.width  / 2;
+      state.y = canvas.height / 2;
+      btnDownload.disabled = false;
+      uploadArea.classList.add('has-image');
+      state.originalFileName = file.name;
+      fileName.textContent = '✔ ' + file.name;
+      render();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+inputImage.addEventListener('change', e => {
+  loadImage(e.target.files[0]);
+});
+
+// 拖放圖片到上傳區
+uploadArea.addEventListener('dragover', e => {
+  e.preventDefault();
+  uploadArea.style.background = 'rgba(233,69,96,0.15)';
+});
+uploadArea.addEventListener('dragleave', () => {
+  uploadArea.style.background = '';
+});
+uploadArea.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadArea.style.background = '';
+  loadImage(e.dataTransfer.files[0]);
+});
+
+// ════════════════════════════════════════
+// 事件：控制面板
+// ════════════════════════════════════════
+inputText.addEventListener('input', () => {
+  state.text = inputText.value;
+  render();
+});
+
+// 填滿按鈕
+const btnTile = document.getElementById('btn-tile');
+btnTile.addEventListener('click', () => {
+  state.tiled = !state.tiled;
+  btnTile.classList.toggle('active', state.tiled);
+  render();
+});
+
+// 重製按鈕
+document.getElementById('btn-reset').addEventListener('click', () => {
+  const DEFAULT_TEXT = '僅供OO公司辦理XX使用，\n禁止轉作其他用途。';
+  state.tiled         = false;
+  state.text          = DEFAULT_TEXT;
+  state.fontSize      = 40;
+  state.bold          = false;
+  state.italic        = false;
+  state.underline     = false;
+  state.strikethrough = false;
+  state.color         = '#ff0000';
+  state.opacity       = 0.6;
+  state.rotation      = -30;
+  state.x             = canvas.width  / 2;
+  state.y             = canvas.height / 2;
+
+  // 同步 UI
+  inputText.value    = DEFAULT_TEXT;
+  inputOpac.value    = 60;
+  valOpac.textContent = '60%';
+  document.querySelectorAll('.style-btn').forEach(b => b.classList.remove('active'));
+  btnTile.classList.remove('active');
+  document.querySelectorAll('.color-dot').forEach(d => {
+    d.classList.toggle('active', d.style.background === 'rgb(255, 0, 0)');
+  });
+
+  render();
+});
+
+// 文字樣式按鈕
+[
+  { id: 'btn-bold',   key: 'bold' },
+  { id: 'btn-italic', key: 'italic' },
+  { id: 'btn-under',  key: 'underline' },
+  { id: 'btn-strike', key: 'strikethrough' },
+].forEach(({ id, key }) => {
+  const btn = document.getElementById(id);
+  btn.addEventListener('click', () => {
+    state[key] = !state[key];
+    btn.classList.toggle('active', state[key]);
+    render();
+  });
+});
+
+inputOpac.addEventListener('input', () => {
+  state.opacity = parseInt(inputOpac.value) / 100;
+  valOpac.textContent = inputOpac.value + '%';
+  render();
+});
+
+// ════════════════════════════════════════
+// 事件：Canvas 滑鼠互動
+// ════════════════════════════════════════
+canvas.addEventListener('mousedown', onDown);
+canvas.addEventListener('mousemove', onMove);
+canvas.addEventListener('mouseup',   onUp);
+canvas.addEventListener('mouseleave', onUp);
+
+canvas.addEventListener('touchstart',  e => { e.preventDefault(); onDown(e); }, { passive: false });
+canvas.addEventListener('touchmove',   e => { e.preventDefault(); onMove(e); }, { passive: false });
+canvas.addEventListener('touchend',    e => { e.preventDefault(); onUp(e);   }, { passive: false });
+
+// 滾輪調整字型大小
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const delta = e.deltaY < 0 ? 2 : -2;
+  state.fontSize = Math.max(10, Math.min(300, state.fontSize + delta));
+  render();
+}, { passive: false });
+
+function onDown(e) {
+  const { x: mx, y: my } = getCanvasPos(e);
+  const metrics = measureText();
+
+  if (isOnHandle(mx, my)) {
+    state.rotating = true;
+    state.rotateStartAngle = state.rotation;
+    state.rotateStartMouseAngle = Math.atan2(my - state.y, mx - state.x) * 180 / Math.PI;
+    canvas.style.cursor = 'crosshair';
+  } else if (isInsideBBox(mx, my, metrics)) {
+    state.dragging = true;
+    state.dragOffsetX = state.x - mx;
+    state.dragOffsetY = state.y - my;
+    canvas.style.cursor = 'grabbing';
+  }
+}
+
+function onMove(e) {
+  const { x: mx, y: my } = getCanvasPos(e);
+  const metrics = measureText();
+
+  if (state.rotating) {
+    const currentAngle = Math.atan2(my - state.y, mx - state.x) * 180 / Math.PI;
+    const delta = currentAngle - state.rotateStartMouseAngle;
+    let newRot = state.rotateStartAngle + delta;
+    newRot = ((newRot + 180) % 360 + 360) % 360 - 180;
+    state.rotation = newRot;
+    render();
+    return;
+  }
+
+  if (state.dragging) {
+    state.x = mx + state.dragOffsetX;
+    state.y = my + state.dragOffsetY;
+    render();
+    return;
+  }
+
+  // Hover 偵測
+  const onHandle = isOnHandle(mx, my);
+  const onBBox   = isInsideBBox(mx, my, metrics);
+  canvas.style.cursor = onHandle ? 'crosshair' : onBBox ? 'grab' : 'default';
+}
+
+function onUp() {
+  state.dragging = false;
+  state.rotating = false;
+  canvas.style.cursor = 'default';
+}
+
+// ════════════════════════════════════════
+// 下載
+// ════════════════════════════════════════
+btnDownload.addEventListener('click', () => {
+  if (!state.image) return;
+
+  // 以原圖解析度輸出
+  const origW = state.image.naturalWidth;
+  const origH = state.image.naturalHeight;
+  const scale = origW / canvas.width;   // 預覽縮放比，反推回原始尺寸
+
+  const off = document.createElement('canvas');
+  off.width  = origW;
+  off.height = origH;
+  const oc = off.getContext('2d');
+
+  // JPEG 需先鋪白底
+  if (inputFormat.value === 'jpg') {
+    oc.fillStyle = '#ffffff';
+    oc.fillRect(0, 0, origW, origH);
+  }
+
+  oc.drawImage(state.image, 0, 0, origW, origH);
+  if (state.tiled) drawTiledScaled(oc, scale, origW, origH);
+  else             drawWatermarkScaled(oc, scale);
+
+  const mime = inputFormat.value === 'jpg' ? 'image/jpeg' : 'image/png';
+  const qual = inputFormat.value === 'jpg' ? 0.92 : undefined;
+  const url  = off.toDataURL(mime, qual);
+
+  const ext = inputFormat.value;
+  const baseName = state.originalFileName.replace(/\.[^.]+$/, '') || 'image';
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${baseName}_浮水印.${ext}`;
+  a.click();
+});
+
+/** 以指定縮放比繪製浮水印（下載用，位置與字型都等比放大） */
+function drawWatermarkScaled(c, scale) {
+  const lines = state.text.split('\n').filter(l => l.length > 0);
+  const scaledSize = state.fontSize * scale;
+  const lineHeight = scaledSize * 1.3;
+  const fontStyle = (state.italic ? 'italic ' : '') + (state.bold ? 'bold ' : '');
+  c.save();
+  c.globalAlpha = state.opacity;
+  c.font = `${fontStyle}${scaledSize}px 'Microsoft JhengHei', 'Noto Sans TC', Arial, sans-serif`;
+  c.fillStyle = state.color;
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.translate(state.x * scale, state.y * scale);
+  c.rotate(state.rotation * Math.PI / 180);
+  const startY = -(lines.length - 1) * lineHeight / 2;
+  lines.forEach((line, i) => {
+    const lineY = startY + i * lineHeight;
+    c.fillText(line, 0, lineY);
+    if (state.underline || state.strikethrough) {
+      const lw = c.measureText(line).width;
+      const thickness = Math.max(1, scaledSize * 0.05);
+      c.fillStyle = state.color;
+      if (state.underline)     c.fillRect(-lw / 2, lineY + scaledSize * 0.38, lw, thickness);
+      if (state.strikethrough) c.fillRect(-lw / 2, lineY, lw, thickness);
+    }
+  });
+  c.restore();
+}
+
+/** 下載用：2D 網格鋪滿（等比放大） */
+function drawTiledScaled(c, scale, totalW, totalH) {
+  const lines = state.text.split('\n').filter(l => l.length > 0);
+  const scaledSize = state.fontSize * scale;
+  const lineHeight = scaledSize * 1.3;
+  const fontStyle = (state.italic ? 'italic ' : '') + (state.bold ? 'bold ' : '');
+  const font = `${fontStyle}${scaledSize}px 'Microsoft JhengHei', 'Noto Sans TC', Arial, sans-serif`;
+
+  const tmp = document.createElement('canvas').getContext('2d');
+  tmp.font = font;
+  let maxW = 0;
+  lines.forEach(l => { const w = tmp.measureText(l).width; if (w > maxW) maxW = w; });
+  const textH = lines.length * lineHeight;
+
+  const rad = state.rotation * Math.PI / 180;
+  const gapAlong = scaledSize;
+  const gapPerp  = scaledSize;
+  const saX = Math.cos(rad) * (maxW  + gapAlong);
+  const saY = Math.sin(rad) * (maxW  + gapAlong);
+  const spX = -Math.sin(rad) * (textH + gapPerp);
+  const spY =  Math.cos(rad) * (textH + gapPerp);
+
+  const diagLen = Math.sqrt(totalW*totalW + totalH*totalH);
+  const nA = Math.ceil(diagLen / (Math.sqrt(saX*saX + saY*saY) || 1)) + 2;
+  const nP = Math.ceil(diagLen / (Math.sqrt(spX*spX + spY*spY) || 1)) + 2;
+
+  c.save();
+  c.globalAlpha = state.opacity;
+  c.font = font;
+  c.fillStyle = state.color;
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+
+  for (let j = -nP; j <= nP; j++) {
+    for (let i = -nA; i <= nA; i++) {
+      const shift = (j % 2 !== 0) ? 0.5 : 0;
+      const x = state.x * scale + (i + shift) * saX + j * spX;
+      const y = state.y * scale + (i + shift) * saY + j * spY;
+      if (x < -maxW*3 || x > totalW + maxW*3) continue;
+      if (y < -textH*3 || y > totalH + textH*3) continue;
+      c.save();
+      c.translate(x, y);
+      c.rotate(rad);
+      const startY = -(lines.length - 1) * lineHeight / 2;
+      lines.forEach((line, li) => {
+        const lineY = startY + li * lineHeight;
+        c.fillText(line, 0, lineY);
+        if (state.underline || state.strikethrough) {
+          const lw = c.measureText(line).width;
+          const th = Math.max(1, scaledSize * 0.05);
+          c.fillStyle = state.color;
+          if (state.underline)     c.fillRect(-lw/2, lineY + scaledSize*0.38, lw, th);
+          if (state.strikethrough) c.fillRect(-lw/2, lineY, lw, th);
+        }
+      });
+      c.restore();
+    }
+  }
+  c.restore();
+}
+
+// ════════════════════════════════════════
+// 初始化
+// ════════════════════════════════════════
+render();
+
+// ════════════════════════════════════════
+// 全域 Tooltip
+// ════════════════════════════════════════
+const gTooltip = document.getElementById('g-tooltip');
+
+document.querySelectorAll('.tooltip-icon').forEach(icon => {
+  icon.addEventListener('mouseenter', e => {
+    gTooltip.innerHTML = (e.currentTarget.dataset.tooltip || '').replace(/\n/g, '<br>');
+    gTooltip.style.display = 'block';
+    positionTooltip(e);
+  });
+  icon.addEventListener('mousemove', positionTooltip);
+  icon.addEventListener('mouseleave', () => {
+    gTooltip.style.display = 'none';
+  });
+});
+
+function positionTooltip(e) {
+  const pad = 12;
+  const tw = gTooltip.offsetWidth;
+  const th = gTooltip.offsetHeight;
+  let x = e.clientX + pad;
+  let y = e.clientY - th - pad;
+  if (x + tw > window.innerWidth)  x = e.clientX - tw - pad;
+  if (y < 0)                        y = e.clientY + pad;
+  gTooltip.style.left = x + 'px';
+  gTooltip.style.top  = y + 'px';
+}
+</script>
+</body>
+</html>

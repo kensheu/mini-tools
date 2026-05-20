@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>彙總報表排序工具</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Microsoft JhengHei', 'Noto Sans TC', system-ui, sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px;
+  }
+
+  header {
+    background: linear-gradient(135deg, #16213e, #0f3460);
+    padding: 14px 28px;
+    border-radius: 12px;
+    text-align: center;
+    width: 100%;
+    max-width: 640px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    margin-bottom: 32px;
+    position: relative;
+  }
+  header h1 {
+    font-size: 22px;
+    font-weight: 600;
+    color: #e94560;
+    letter-spacing: 1px;
+  }
+  header p {
+    font-size: 13px;
+    color: #888;
+    margin-top: 4px;
+  }
+
+  .card {
+    background: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 12px;
+    padding: 28px;
+    width: 100%;
+    max-width: 640px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  }
+
+  /* 拖拉區 */
+  #drop-zone {
+    border: 2px dashed #0f3460;
+    border-radius: 10px;
+    padding: 48px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+  #drop-zone:hover,
+  #drop-zone.drag-over {
+    border-color: #e94560;
+    background: rgba(233, 69, 96, 0.05);
+  }
+  #drop-zone .icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+    display: block;
+  }
+  #drop-zone .hint {
+    font-size: 15px;
+    color: #aaa;
+    line-height: 1.6;
+  }
+  #drop-zone .hint strong {
+    color: #e94560;
+  }
+  #file-input {
+    display: none;
+  }
+
+  /* 排序規則說明 */
+  .rule-box {
+    margin-top: 24px;
+    background: #0f1b35;
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 13px;
+    color: #aaa;
+    line-height: 1.8;
+  }
+  .rule-box .label {
+    color: #e94560;
+    font-weight: 600;
+    margin-bottom: 4px;
+    display: block;
+  }
+  .tag {
+    display: inline-block;
+    background: #0f3460;
+    color: #7ec8e3;
+    border-radius: 4px;
+    padding: 1px 8px;
+    margin: 0 2px;
+    font-size: 12px;
+  }
+
+  /* 狀態訊息 */
+  #status {
+    margin-top: 20px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    display: none;
+  }
+  #status.success {
+    display: block;
+    background: rgba(46, 213, 115, 0.1);
+    border: 1px solid rgba(46, 213, 115, 0.3);
+    color: #2ed573;
+  }
+  #status.error {
+    display: block;
+    background: rgba(233, 69, 96, 0.1);
+    border: 1px solid rgba(233, 69, 96, 0.3);
+    color: #e94560;
+  }
+  #status.info {
+    display: block;
+    background: rgba(126, 200, 227, 0.1);
+    border: 1px solid rgba(126, 200, 227, 0.3);
+    color: #7ec8e3;
+  }
+
+  /* 預覽表格 */
+  #preview-section {
+    display: none;
+    margin-top: 28px;
+  }
+  #preview-section h2 {
+    font-size: 14px;
+    color: #888;
+    margin-bottom: 10px;
+  }
+  .table-wrap {
+    overflow-x: auto;
+    border-radius: 8px;
+    border: 1px solid #0f3460;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  th {
+    background: #0f3460;
+    color: #7ec8e3;
+    padding: 8px 12px;
+    text-align: left;
+    position: sticky;
+    top: 0;
+  }
+  td {
+    padding: 7px 12px;
+    border-bottom: 1px solid #1e2d50;
+    color: #ccc;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(15,52,96,0.4); }
+
+  /* 下載按鈕 */
+  #download-btn {
+    display: none;
+    margin-top: 20px;
+    width: 100%;
+    padding: 13px;
+    background: linear-gradient(135deg, #e94560, #c73652);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: opacity 0.2s;
+  }
+  #download-btn:hover { opacity: 0.85; }
+
+  .scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scrollbar::-webkit-scrollbar-track { background: #16213e; }
+  .scrollbar::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>彙總報表排序工具</h1>
+  <p>自動依日期、時段排序 CSV 彙總報表</p>
+  <a href="index.html" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:13px;color:#888;text-decoration:none;letter-spacing:1px;white-space:nowrap;transition:color 0.2s;" onmouseover="this.style.color='#e94560'" onmouseout="this.style.color='#888'">← 返回首頁</a>
+</header>
+
+<div class="card">
+  <!-- 拖拉上傳區 -->
+  <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+    <span class="icon">📂</span>
+    <div class="hint">
+      點擊選擇 CSV 檔案，或直接<strong>拖拉</strong>到這裡
+    </div>
+  </div>
+  <input type="file" id="file-input" accept=".csv">
+
+  <!-- 排序規則說明 -->
+  <div class="rule-box">
+    <span class="label">排序規則</span>
+    主排序：日期（由舊到新）&nbsp;&nbsp;|&nbsp;&nbsp;
+    次排序：時段
+    <span class="tag">早餐</span>→
+    <span class="tag">午餐</span>→
+    <span class="tag">下午茶</span>→
+    <span class="tag">晚餐</span>→
+    <span class="tag">宵夜</span>
+  </div>
+
+  <!-- 狀態訊息 -->
+  <div id="status"></div>
+
+  <!-- 預覽 -->
+  <div id="preview-section">
+    <h2>排序後預覽（前 30 列）</h2>
+    <div class="table-wrap scrollbar">
+      <table id="preview-table"></table>
+    </div>
+  </div>
+
+  <!-- 下載按鈕 -->
+  <button id="download-btn">下載排序後的 CSV</button>
+</div>
+
+<script>
+const MEAL_ORDER = { '早餐': 1, '午餐': 2, '下午茶': 3, '晚餐': 4, '宵夜': 5 };
+
+// ── 拖拉事件 ──
+const dropZone = document.getElementById('drop-zone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+document.getElementById('file-input').addEventListener('change', e => {
+  if (e.target.files[0]) handleFile(e.target.files[0]);
+});
+
+let sortedCsvBlob = null;
+let outputFilename = '';
+
+function showStatus(msg, type) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = type;
+}
+
+function handleFile(file) {
+  if (!file.name.toLowerCase().endsWith('.csv')) {
+    showStatus('請選擇 .csv 格式的檔案', 'error');
+    return;
+  }
+  showStatus('讀取中...', 'info');
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      let text = e.target.result;
+      // 去除 UTF-8 BOM
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+
+      const lines = text.split(/\r?\n/);
+      const header = lines[0];
+      const dataLines = lines.slice(1).filter(l => l.trim() !== '');
+
+      if (dataLines.length === 0) {
+        showStatus('檔案沒有資料列', 'error');
+        return;
+      }
+
+      // 找出日期（col 0）和時段（col 2）的欄位索引（以 header 確認）
+      const headers = parseCSVLine(header);
+      const dateIdx = headers.findIndex(h => h.includes('日期'));
+      const mealIdx = headers.findIndex(h => h.includes('時段'));
+
+      if (dateIdx === -1 || mealIdx === -1) {
+        showStatus('找不到「日期」或「時段」欄位，請確認 CSV 格式是否正確', 'error');
+        return;
+      }
+
+      // 解析每列
+      const rows = dataLines.map(l => ({ raw: l, cols: parseCSVLine(l) }));
+
+      // 排序
+      rows.sort((a, b) => {
+        const dateA = a.cols[dateIdx] || '';
+        const dateB = b.cols[dateIdx] || '';
+        const dateCmp = dateA.localeCompare(dateB);
+        if (dateCmp !== 0) return dateCmp;
+
+        const mealA = MEAL_ORDER[a.cols[mealIdx]] ?? 99;
+        const mealB = MEAL_ORDER[b.cols[mealIdx]] ?? 99;
+        return mealA - mealB;
+      });
+
+      // 重組 CSV（加 UTF-8 BOM，Excel 才能正確開啟中文）
+      const bom = '\uFEFF';
+      const csvContent = bom + header + '\n' + rows.map(r => r.raw).join('\n');
+      sortedCsvBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+      // 輸出檔名
+      const base = file.name.replace(/\.csv$/i, '');
+      outputFilename = base + '_sorted.csv';
+
+      // 顯示結果
+      showStatus(`排序完成！共 ${rows.length} 列資料`, 'success');
+      renderPreview(headers, rows.slice(0, 30));
+      const btn = document.getElementById('download-btn');
+      btn.style.display = 'block';
+      btn.textContent = `下載 ${outputFilename}`;
+
+    } catch (err) {
+      showStatus('處理失敗：' + err.message, 'error');
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// 簡易 CSV 單列解析（不處理欄位內換行，符合此報表格式）
+function parseCSVLine(line) {
+  const result = [];
+  let cur = '';
+  let inQuote = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuote && line[i+1] === '"') { cur += '"'; i++; }
+      else inQuote = !inQuote;
+    } else if (ch === ',' && !inQuote) {
+      result.push(cur);
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
+function renderPreview(headers, rows) {
+  const table = document.getElementById('preview-table');
+  let html = '<thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>';
+  for (const row of rows) {
+    html += '<tr>' + row.cols.map(c => `<td>${c}</td>`).join('') + '</tr>';
+  }
+  html += '</tbody>';
+  table.innerHTML = html;
+  document.getElementById('preview-section').style.display = 'block';
+}
+
+document.getElementById('download-btn').addEventListener('click', () => {
+  if (!sortedCsvBlob) return;
+  const url = URL.createObjectURL(sortedCsvBlob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = outputFilename;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+</script>
+</body>
+</html>

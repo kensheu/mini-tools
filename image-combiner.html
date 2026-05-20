@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>圖片組合工具</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Microsoft JhengHei', 'Noto Sans TC', system-ui, sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  header {
+    background: linear-gradient(135deg, #16213e, #0f3460);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 22px; font-weight: 600; color: #e94560; letter-spacing: 1px; }
+  header span { font-size: 15px; color: #888; }
+
+  #main { display: flex; flex: 1; overflow: hidden; }
+
+  /* ══ 左側控制面板 ══ */
+  #panel {
+    width: 300px;
+    min-width: 300px;
+    background: #16213e;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    border-right: 1px solid #0f3460;
+  }
+  #panel::-webkit-scrollbar { width: 6px; }
+  #panel::-webkit-scrollbar-track { background: #16213e; }
+  #panel::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 3px; }
+
+  .section {
+    background: #0f3460;
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .section-title {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #e94560;
+    margin-bottom: 2px;
+  }
+
+  label { font-size: 15px; color: #aaa; display: flex; flex-direction: column; gap: 5px; }
+  label span { color: #ccc; }
+
+  /* 上傳區 */
+  .upload-area {
+    border: 2px dashed #e94560;
+    border-radius: 8px;
+    padding: 18px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.2s;
+    position: relative;
+  }
+  .upload-area:hover, .upload-area.drag-over { background: rgba(233,69,96,0.12); }
+  .upload-area input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .upload-icon { font-size: 30px; margin-bottom: 4px; }
+  .upload-text { font-size: 15px; color: #ccc; }
+  .upload-hint { font-size: 12px; color: #666; margin-top: 3px; }
+
+  /* 縮圖列表 */
+  #img-list { display: flex; flex-direction: column; gap: 6px; }
+  .img-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #1a1a2e;
+    border-radius: 6px;
+    padding: 6px 8px;
+    cursor: grab;
+    border: 1px solid transparent;
+    transition: border-color 0.15s;
+  }
+  .img-item:active { cursor: grabbing; }
+  .img-item.drag-target { border-color: #e94560; }
+  .img-item img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+  .img-item-name { flex: 1; font-size: 12px; color: #999; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .img-item-del {
+    background: none; border: none; color: #555; font-size: 16px; cursor: pointer;
+    padding: 0 4px; line-height: 1; flex-shrink: 0; transition: color 0.15s;
+  }
+  .img-item-del:hover { color: #e94560; }
+  .img-drag-handle { color: #555; font-size: 14px; cursor: grab; flex-shrink: 0; }
+
+  /* 版面模式按鈕 */
+  .layout-btns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .layout-btn {
+    padding: 10px 6px;
+    background: #1a1a2e;
+    border: 2px solid #0f3460;
+    border-radius: 6px;
+    color: #aaa;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    line-height: 1;
+  }
+  .layout-btn:hover { border-color: #e94560; color: #fff; }
+  .layout-btn.active { background: #e94560; border-color: #e94560; color: #fff; }
+  .layout-btn-icon { font-size: 18px; }
+  .layout-btn-label { font-size: 12px; }
+
+  /* range slider */
+  .range-row { display: flex; align-items: center; gap: 8px; }
+  input[type="range"] { flex: 1; height: 4px; accent-color: #e94560; cursor: pointer; }
+  .range-val { font-size: 15px; color: #e94560; min-width: 40px; text-align: right; font-weight: 600; }
+
+  /* 背景色選擇 */
+  .bg-btns { display: flex; gap: 8px; }
+  .bg-btn {
+    width: 36px; height: 36px; border-radius: 6px; cursor: pointer;
+    border: 2px solid transparent; transition: border-color 0.15s, transform 0.15s;
+    flex-shrink: 0;
+  }
+  .bg-btn:hover { transform: scale(1.1); }
+  .bg-btn.active { border-color: #fff; }
+  .bg-btn-white { background: #ffffff; }
+  .bg-btn-black { background: #000000; }
+  .bg-btn-trans {
+    background-image: linear-gradient(45deg, #555 25%, transparent 25%),
+                      linear-gradient(-45deg, #555 25%, transparent 25%),
+                      linear-gradient(45deg, transparent 75%, #555 75%),
+                      linear-gradient(-45deg, transparent 75%, #555 75%);
+    background-size: 10px 10px;
+    background-position: 0 0, 0 5px, 5px -5px, -5px 0px;
+    background-color: #333;
+  }
+
+  /* select */
+  select {
+    background: #1a1a2e; border: 1px solid #0f3460; border-radius: 6px;
+    color: #e0e0e0; font-size: 15px; padding: 8px 12px; cursor: pointer; width: 100%;
+  }
+  select:focus { outline: none; border-color: #e94560; }
+
+  /* 自由排版說明 */
+  #free-hint-section { display: none; }
+  .free-hint { font-size: 13px; color: #888; line-height: 1.7; }
+  .free-hint b { color: #e94560; }
+
+  /* 重設按鈕 */
+  #btn-reset-free {
+    padding: 10px 16px; background: #1a1a2e; border: 2px solid #0f3460;
+    border-radius: 8px; color: #aaa; font-size: 14px; cursor: pointer;
+    transition: border-color 0.2s, color 0.2s; width: 100%;
+  }
+  #btn-reset-free:hover { border-color: #e94560; color: #fff; }
+
+  /* 下載按鈕 */
+  #btn-download {
+    width: 100%; padding: 14px;
+    background: linear-gradient(135deg, #e94560, #c62a47);
+    color: white; border: none; border-radius: 8px;
+    font-size: 17px; font-weight: 700; cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s; letter-spacing: 1px;
+  }
+  #btn-download:hover { opacity: 0.9; }
+  #btn-download:active { transform: scale(0.98); }
+  #btn-download:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ══ 右側預覽區 ══ */
+  #preview {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: #0d0d1a; overflow: auto; padding: 20px; gap: 12px;
+  }
+
+  #canvas-wrap {
+    position: relative;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    border-radius: 4px;
+    overflow: hidden;
+    max-width: 100%;
+  }
+
+  #canvas {
+    display: block;
+    max-width: 100%;
+    max-height: calc(100vh - 120px);
+  }
+
+  #placeholder {
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    color: #444; text-align: center;
+  }
+  #placeholder .ph-icon { font-size: 60px; opacity: 0.3; }
+  #placeholder .ph-text { font-size: 17px; }
+  #placeholder .ph-sub { font-size: 14px; color: #333; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>圖片組合工具</h1>
+  <span>上傳多張圖片，自由排版組合後下載</span>
+  <a href="index.html" style="margin-left:auto;font-size:13px;color:#888;text-decoration:none;letter-spacing:1px;white-space:nowrap;transition:color 0.2s;" onmouseover="this.style.color='#e94560'" onmouseout="this.style.color='#888'">← 返回首頁</a>
+</header>
+
+<div id="main">
+  <!-- 左側控制面板 -->
+  <div id="panel">
+
+    <!-- Section: 圖片上傳 -->
+    <div class="section">
+      <div class="section-title">圖片上傳</div>
+      <div class="upload-area" id="upload-area">
+        <input type="file" id="file-input" accept="image/*" multiple>
+        <div class="upload-icon">🖼️</div>
+        <div class="upload-text">點擊或拖曳上傳圖片</div>
+        <div class="upload-hint">支援 JPG、PNG、WebP 等格式，可多選</div>
+      </div>
+      <div id="img-list"></div>
+    </div>
+
+    <!-- Section: 版面模式 -->
+    <div class="section">
+      <div class="section-title">版面模式</div>
+      <div class="layout-btns">
+        <button class="layout-btn" data-mode="lr">
+          <span class="layout-btn-icon">⬛⬛</span>
+          <span class="layout-btn-label">左右並排</span>
+        </button>
+        <button class="layout-btn" data-mode="tb">
+          <span class="layout-btn-icon">🔲</span>
+          <span class="layout-btn-label">上下堆疊</span>
+        </button>
+        <button class="layout-btn active" data-mode="grid">
+          <span class="layout-btn-icon">⊞</span>
+          <span class="layout-btn-label">格狀排列</span>
+        </button>
+        <button class="layout-btn" data-mode="free">
+          <span class="layout-btn-icon">✥</span>
+          <span class="layout-btn-label">自由排版</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Section: 版面設定 -->
+    <div class="section">
+      <div class="section-title">版面設定</div>
+      <label>
+        <span>圖片間距</span>
+        <div class="range-row">
+          <input type="range" id="gap-slider" min="0" max="100" value="10">
+          <span class="range-val" id="gap-val">10px</span>
+        </div>
+      </label>
+      <label>
+        <span>外邊距</span>
+        <div class="range-row">
+          <input type="range" id="margin-slider" min="0" max="100" value="20">
+          <span class="range-val" id="margin-val">20px</span>
+        </div>
+      </label>
+      <label id="grid-cols-label" style="display:none">
+        <span>格狀欄數</span>
+        <div class="range-row">
+          <input type="range" id="cols-slider" min="2" max="4" step="1" value="2">
+          <span class="range-val" id="cols-val">2 欄</span>
+        </div>
+      </label>
+      <label><span>背景色</span></label>
+      <div class="bg-btns">
+        <div class="bg-btn bg-btn-white active" data-bg="white" title="白色"></div>
+        <div class="bg-btn bg-btn-black" data-bg="black" title="黑色"></div>
+        <div class="bg-btn bg-btn-trans" data-bg="transparent" title="透明"></div>
+      </div>
+    </div>
+
+    <!-- Section: 自由排版提示 -->
+    <div class="section" id="free-hint-section">
+      <div class="section-title">自由排版操作</div>
+      <div class="free-hint">
+        • <b>點擊</b>圖片以選取<br>
+        • <b>拖曳</b>圖片可移動位置<br>
+        • <b>滾輪</b>對圖片縮放大小
+      </div>
+      <button id="btn-reset-free">重設版面</button>
+    </div>
+
+    <!-- Section: 輸出下載 -->
+    <div class="section">
+      <div class="section-title">輸出下載</div>
+      <label>
+        <span>輸出格式</span>
+        <select id="format-select">
+          <option value="jpg">JPG（白底，檔案較小）</option>
+          <option value="png">PNG（保留透明背景）</option>
+        </select>
+      </label>
+      <button id="btn-download" disabled>下載組合圖片</button>
+    </div>
+
+  </div><!-- /panel -->
+
+  <!-- 右側預覽區 -->
+  <div id="preview">
+    <div id="placeholder">
+      <div class="ph-icon">🗂️</div>
+      <div class="ph-text">請先上傳圖片</div>
+      <div class="ph-sub">支援雙證件四張圖 2×2 組合</div>
+    </div>
+    <div id="canvas-wrap" style="display:none">
+      <canvas id="canvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+//  狀態
+// ══════════════════════════════════════════
+const state = {
+  images: [],        // [{id, img, name}]
+  layoutMode: 'grid',
+  gridCols: 2,
+  gap: 10,
+  margin: 20,
+  bgColor: 'white',
+  freeItems: [],     // [{id, x, y, w, h}]
+  selected: null,    // 自由排版選取的 id
+  dragging: null,    // {type:'move'|'resize', id, offsetX, offsetY, startW, startH, startMX, startMY}
+  outputFormat: 'jpg',
+  // 固定版面輸出寬度
+  outputWidth: 1600,
+  // 自由排版固定尺寸
+  freeW: 1600,
+  freeH: 1200,
+};
+
+// ══════════════════════════════════════════
+//  DOM 參考
+// ══════════════════════════════════════════
+const canvas    = document.getElementById('canvas');
+const ctx       = canvas.getContext('2d');
+const canvasWrap = document.getElementById('canvas-wrap');
+const placeholder = document.getElementById('placeholder');
+const imgList   = document.getElementById('img-list');
+const uploadArea = document.getElementById('upload-area');
+const fileInput  = document.getElementById('file-input');
+const gapSlider  = document.getElementById('gap-slider');
+const gapVal     = document.getElementById('gap-val');
+const marginSlider = document.getElementById('margin-slider');
+const marginVal  = document.getElementById('margin-val');
+const formatSelect = document.getElementById('format-select');
+const btnDownload = document.getElementById('btn-download');
+const freeHintSection = document.getElementById('free-hint-section');
+const gridColsLabel = document.getElementById('grid-cols-label');
+const colsSlider = document.getElementById('cols-slider');
+const colsVal = document.getElementById('cols-val');
+
+// ══════════════════════════════════════════
+//  圖片上傳
+// ══════════════════════════════════════════
+fileInput.addEventListener('change', e => loadFiles(e.target.files));
+
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
+uploadArea.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadArea.classList.remove('drag-over');
+  loadFiles(e.dataTransfer.files);
+});
+
+function loadFiles(files) {
+  const arr = Array.from(files).filter(f => f.type.startsWith('image/'));
+  arr.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        state.images.push({ id: crypto.randomUUID(), img, name: file.name });
+        renderImageList();
+        render();
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ══════════════════════════════════════════
+//  縮圖列表渲染
+// ══════════════════════════════════════════
+let dragSrcIdx = null;
+
+function renderImageList() {
+  imgList.innerHTML = '';
+  state.images.forEach((item, idx) => {
+    const div = document.createElement('div');
+    div.className = 'img-item';
+    div.draggable = true;
+    div.dataset.idx = idx;
+
+    const handle = document.createElement('span');
+    handle.className = 'img-drag-handle';
+    handle.textContent = '≡';
+    handle.title = '拖曳排序';
+
+    const thumb = document.createElement('img');
+    thumb.src = item.img.src;
+
+    const name = document.createElement('span');
+    name.className = 'img-item-name';
+    name.textContent = item.name;
+    name.title = item.name;
+
+    const del = document.createElement('button');
+    del.className = 'img-item-del';
+    del.textContent = '×';
+    del.title = '刪除';
+    del.addEventListener('click', () => {
+      state.images.splice(idx, 1);
+      state.freeItems = state.freeItems.filter(fi => fi.id !== item.id);
+      if (state.selected === item.id) state.selected = null;
+      renderImageList();
+      render();
+    });
+
+    div.appendChild(handle);
+    div.appendChild(thumb);
+    div.appendChild(name);
+    div.appendChild(del);
+
+    // 拖曳排序事件
+    div.addEventListener('dragstart', e => {
+      dragSrcIdx = idx;
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    div.addEventListener('dragover', e => {
+      e.preventDefault();
+      div.classList.add('drag-target');
+    });
+    div.addEventListener('dragleave', () => div.classList.remove('drag-target'));
+    div.addEventListener('drop', e => {
+      e.preventDefault();
+      div.classList.remove('drag-target');
+      if (dragSrcIdx === null || dragSrcIdx === idx) return;
+      const moved = state.images.splice(dragSrcIdx, 1)[0];
+      state.images.splice(idx, 0, moved);
+      dragSrcIdx = null;
+      renderImageList();
+      render();
+    });
+
+    imgList.appendChild(div);
+  });
+
+  // 更新下載按鈕狀態
+  btnDownload.disabled = state.images.length === 0;
+
+  // 顯示/隱藏 canvas
+  if (state.images.length > 0) {
+    placeholder.style.display = 'none';
+    canvasWrap.style.display = 'block';
+  } else {
+    placeholder.style.display = 'flex';
+    canvasWrap.style.display = 'none';
+  }
+}
+
+// ══════════════════════════════════════════
+//  版面模式切換
+// ══════════════════════════════════════════
+document.querySelectorAll('.layout-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const newMode = btn.dataset.mode;
+    if (newMode === 'free' && state.layoutMode !== 'free') {
+      // 初始化 freeItems
+      initFreeItems();
+    }
+    state.layoutMode = newMode;
+    document.querySelectorAll('.layout-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    freeHintSection.style.display = newMode === 'free' ? 'flex' : 'none';
+    gridColsLabel.style.display = newMode === 'grid' ? 'flex' : 'none';
+    render();
+  });
+});
+
+// ══════════════════════════════════════════
+//  版面設定控制
+// ══════════════════════════════════════════
+gapSlider.addEventListener('input', () => {
+  state.gap = +gapSlider.value;
+  gapVal.textContent = state.gap + 'px';
+  render();
+});
+
+marginSlider.addEventListener('input', () => {
+  state.margin = +marginSlider.value;
+  marginVal.textContent = state.margin + 'px';
+  render();
+});
+
+document.querySelectorAll('.bg-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.bgColor = btn.dataset.bg;
+    document.querySelectorAll('.bg-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    render();
+  });
+});
+
+formatSelect.addEventListener('change', () => {
+  state.outputFormat = formatSelect.value;
+});
+
+colsSlider.addEventListener('input', () => {
+  state.gridCols = +colsSlider.value;
+  colsVal.textContent = state.gridCols + ' 欄';
+  render();
+});
+
+document.getElementById('btn-reset-free').addEventListener('click', () => {
+  initFreeItems();
+  render();
+});
+
+// ══════════════════════════════════════════
+//  版面計算輔助
+// ══════════════════════════════════════════
+function drawContain(c, img, gx, gy, gw, gh) {
+  if (!img || gw <= 0 || gh <= 0) return;
+  const scale = Math.min(gw / img.naturalWidth, gh / img.naturalHeight);
+  const dw = img.naturalWidth * scale;
+  const dh = img.naturalHeight * scale;
+  c.drawImage(img, gx + (gw - dw) / 2, gy + (gh - dh) / 2, dw, dh);
+}
+
+function fillBg(c, w, h) {
+  if (state.bgColor === 'transparent') {
+    c.clearRect(0, 0, w, h);
+  } else {
+    c.fillStyle = state.bgColor === 'black' ? '#000000' : '#ffffff';
+    c.fillRect(0, 0, w, h);
+  }
+}
+
+// 計算各種版面的 rects，返回 {rects: [{img, x, y, w, h}], totalH}
+function computeLayout(totalW) {
+  const imgs = state.images;
+  const N = imgs.length;
+  const { gap, margin } = state;
+  const avail = totalW - margin * 2;
+  let rects = [];
+  let totalH = totalW; // 預設
+
+  if (N === 0) return { rects, totalH };
+
+  if (state.layoutMode === 'lr') {
+    // 左右並排：等寬，高度由最大自然比決定
+    const cellW = (avail - gap * (N - 1)) / N;
+    // 每張縮放到 cellW 後的高度
+    let maxH = 0;
+    imgs.forEach(item => {
+      const h = (item.img.naturalHeight / item.img.naturalWidth) * cellW;
+      if (h > maxH) maxH = h;
+    });
+    totalH = margin * 2 + maxH;
+    imgs.forEach((item, i) => {
+      rects.push({ img: item.img, x: margin + i * (cellW + gap), y: margin, w: cellW, h: maxH });
+    });
+
+  } else if (state.layoutMode === 'tb') {
+    // 上下堆疊：等寬，高度各自依比例
+    const cellW = avail;
+    let yOff = margin;
+    imgs.forEach(item => {
+      const cellH = (item.img.naturalHeight / item.img.naturalWidth) * cellW;
+      rects.push({ img: item.img, x: margin, y: yOff, w: cellW, h: cellH });
+      yOff += cellH + gap;
+    });
+    totalH = yOff - gap + margin;
+
+  } else if (state.layoutMode === 'grid') {
+    const cols = state.gridCols;
+    const cellW = (avail - gap * (cols - 1)) / cols;
+    const rows = Math.ceil(N / cols);
+    let yOff = margin;
+    for (let r = 0; r < rows; r++) {
+      // 計算此列高度：同列所有圖 contain 進 cellW 後取最大
+      let rowH = cellW;
+      for (let c = 0; c < cols; c++) {
+        const im = imgs[r * cols + c] ? imgs[r * cols + c].img : null;
+        if (im) {
+          const h = (im.naturalHeight / im.naturalWidth) * cellW;
+          if (h > rowH) rowH = h;
+        }
+      }
+      for (let c = 0; c < cols; c++) {
+        const item = imgs[r * cols + c];
+        if (item) rects.push({ img: item.img, x: margin + c * (cellW + gap), y: yOff, w: cellW, h: rowH });
+      }
+      yOff += rowH + gap;
+    }
+    totalH = yOff - gap + margin;
+
+  } else if (state.layoutMode === 'free') {
+    // 自由排版：使用 freeItems
+    totalH = state.freeH;
+    state.freeItems.forEach(fi => {
+      const item = imgs.find(im => im.id === fi.id);
+      if (item) rects.push({ img: item.img, x: fi.x, y: fi.y, w: fi.w, h: fi.h, id: fi.id });
+    });
+  }
+
+  return { rects, totalH };
+}
+
+// ══════════════════════════════════════════
+//  renderLayout — 繪圖核心（供預覽 & 下載共用）
+// ══════════════════════════════════════════
+function renderLayout(c, totalW, totalH, drawSelection) {
+  fillBg(c, totalW, totalH);
+  const { rects } = computeLayout(totalW);
+  rects.forEach(rect => drawContain(c, rect.img, rect.x, rect.y, rect.w, rect.h));
+
+  // 自由排版：繪製選取框
+  if (drawSelection && state.layoutMode === 'free' && state.selected) {
+    const fi = state.freeItems.find(f => f.id === state.selected);
+    if (fi) {
+      c.save();
+      c.strokeStyle = '#4a90e2';
+      c.lineWidth = 2;
+      c.setLineDash([5, 3]);
+      c.strokeRect(fi.x, fi.y, fi.w, fi.h);
+      c.setLineDash([]);
+      c.restore();
+    }
+  }
+}
+
+// ══════════════════════════════════════════
+//  自動計算最佳輸出寬度（根據原圖尺寸）
+// ══════════════════════════════════════════
+function computeOptimalWidth() {
+  const imgs = state.images;
+  const N = imgs.length;
+  if (N === 0) return 1600;
+  const { gap, margin } = state;
+
+  if (state.layoutMode === 'lr') {
+    // 所有圖原始寬度加總
+    const total = imgs.reduce((s, it) => s + it.img.naturalWidth, 0);
+    return total + gap * (N - 1) + margin * 2;
+
+  } else if (state.layoutMode === 'tb') {
+    // 最寬的圖
+    return Math.max(...imgs.map(it => it.img.naturalWidth)) + margin * 2;
+
+  } else if (state.layoutMode === 'grid') {
+    const cols = state.gridCols;
+    const rows = Math.ceil(N / cols);
+    // 找每列最寬的組合，取最大列寬
+    let bestW = 0;
+    for (let r = 0; r < rows; r++) {
+      let rowW = 0;
+      for (let c = 0; c < cols; c++) {
+        const item = imgs[r * cols + c];
+        if (item) rowW += item.img.naturalWidth;
+      }
+      bestW = Math.max(bestW, rowW);
+    }
+    return bestW + gap * (cols - 1) + margin * 2;
+
+  } else {
+    // free 模式沿用 state.freeW
+    return state.freeW;
+  }
+}
+
+// ══════════════════════════════════════════
+//  render — 更新預覽 Canvas
+// ══════════════════════════════════════════
+function render() {
+  if (state.images.length === 0) return;
+
+  const totalW = state.layoutMode === 'free' ? state.freeW : computeOptimalWidth();
+  const { totalH } = computeLayout(totalW);
+
+  canvas.width = totalW;
+  canvas.height = totalH;
+
+  renderLayout(ctx, totalW, totalH, true);
+}
+
+// ══════════════════════════════════════════
+//  自由排版：初始化 freeItems（依固定版面位置）
+// ══════════════════════════════════════════
+function initFreeItems() {
+  // 先用 grid 版面算位置做為初始值，canvas 尺寸跟著原圖走
+  const saved = state.layoutMode;
+  state.layoutMode = 'grid';
+  const totalW = computeOptimalWidth();
+  const { rects, totalH } = computeLayout(totalW);
+  state.layoutMode = saved;
+  state.freeW = totalW;
+  state.freeH = Math.max(totalH, totalW * 0.5);
+
+  state.freeItems = state.images.map((item, i) => {
+    const r = rects[i];
+    if (r) return { id: item.id, x: r.x, y: r.y, w: r.w, h: r.h };
+    // 若沒有對應 rect（超過 4 張），堆疊在左上
+    return { id: item.id, x: state.margin + i * 20, y: state.margin + i * 20, w: 300, h: 200 };
+  });
+  state.selected = null;
+}
+
+// ══════════════════════════════════════════
+//  自由排版：Canvas 滑鼠互動
+// ══════════════════════════════════════════
+const RESIZE_HANDLE = 12; // 右下角 resize 熱區半徑（邏輯 px）
+
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  return {
+    x: (clientX - rect.left) * scaleX,
+    y: (clientY - rect.top) * scaleY,
+  };
+}
+
+function hitTest(mx, my) {
+  // 從後往前（上層優先）
+  for (let i = state.freeItems.length - 1; i >= 0; i--) {
+    const fi = state.freeItems[i];
+    if (mx >= fi.x && mx <= fi.x + fi.w && my >= fi.y && my <= fi.y + fi.h) {
+      return { id: fi.id, type: 'move' };
+    }
+  }
+  return null;
+}
+
+canvas.addEventListener('mousedown', onCanvasDown);
+canvas.addEventListener('mousemove', onCanvasMove);
+canvas.addEventListener('mouseup', onCanvasUp);
+canvas.addEventListener('mouseleave', onCanvasUp);
+canvas.addEventListener('touchstart', onCanvasDown, { passive: false });
+canvas.addEventListener('touchmove', onCanvasMove, { passive: false });
+canvas.addEventListener('touchend', onCanvasUp);
+
+function onCanvasDown(e) {
+  if (state.layoutMode !== 'free') return;
+  e.preventDefault();
+  const { x, y } = getCanvasPos(e);
+  const hit = hitTest(x, y);
+  if (!hit) {
+    state.selected = null;
+    render();
+    return;
+  }
+  state.selected = hit.id;
+
+  // 將選取項目移到最後（最上層顯示）
+  const idx = state.freeItems.findIndex(f => f.id === hit.id);
+  const [fi] = state.freeItems.splice(idx, 1);
+  state.freeItems.push(fi);
+
+  if (hit.type === 'move') {
+    state.dragging = { type: 'move', id: hit.id, offsetX: x - fi.x, offsetY: y - fi.y };
+  } else {
+    state.dragging = {
+      type: 'resize', id: hit.id,
+      startMX: x, startMY: y,
+      startW: fi.w, startH: fi.h,
+    };
+  }
+  render();
+}
+
+function onCanvasMove(e) {
+  if (!state.dragging || state.layoutMode !== 'free') return;
+  e.preventDefault();
+  const { x, y } = getCanvasPos(e);
+  const fi = state.freeItems.find(f => f.id === state.dragging.id);
+  if (!fi) return;
+
+  if (state.dragging.type === 'move') {
+    fi.x = x - state.dragging.offsetX;
+    fi.y = y - state.dragging.offsetY;
+  } else {
+    const dw = x - state.dragging.startMX;
+    const dh = y - state.dragging.startMY;
+    fi.w = Math.max(50, state.dragging.startW + dw);
+    fi.h = Math.max(50, state.dragging.startH + dh);
+  }
+  render();
+}
+
+function onCanvasUp() {
+  state.dragging = null;
+}
+
+// 游標提示
+canvas.addEventListener('mousemove', e => {
+  if (state.layoutMode !== 'free') { canvas.style.cursor = 'default'; return; }
+  const { x, y } = getCanvasPos(e);
+  const hit = hitTest(x, y);
+  canvas.style.cursor = hit ? 'move' : 'default';
+});
+
+// 滾輪縮放（自由排版）
+canvas.addEventListener('wheel', e => {
+  if (state.layoutMode !== 'free') return;
+  e.preventDefault();
+  const { x, y } = getCanvasPos(e);
+  const hit = hitTest(x, y);
+  if (!hit) return;
+  const fi = state.freeItems.find(f => f.id === hit.id);
+  if (!fi) return;
+
+  const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+  const newW = Math.max(50, fi.w * factor);
+  const newH = Math.max(50, fi.h * factor);
+  // 以圖片中心為基準縮放
+  const cx = fi.x + fi.w / 2;
+  const cy = fi.y + fi.h / 2;
+  fi.w = newW;
+  fi.h = newH;
+  fi.x = cx - newW / 2;
+  fi.y = cy - newH / 2;
+
+  // 選取該圖片
+  state.selected = fi.id;
+  render();
+}, { passive: false });
+
+// ══════════════════════════════════════════
+//  下載
+// ══════════════════════════════════════════
+btnDownload.addEventListener('click', () => {
+  if (state.images.length === 0) return;
+
+  const totalW = state.layoutMode === 'free' ? state.freeW : computeOptimalWidth();
+  const { totalH } = computeLayout(totalW);
+
+  const off = document.createElement('canvas');
+  off.width = totalW;
+  off.height = Math.max(totalH, 1);
+  const oc = off.getContext('2d');
+
+  // JPG 強制補白底
+  if (state.outputFormat === 'jpg' && state.bgColor === 'transparent') {
+    oc.fillStyle = '#ffffff';
+    oc.fillRect(0, 0, off.width, off.height);
+  }
+
+  renderLayout(oc, totalW, off.height, false);
+
+  const mime = state.outputFormat === 'jpg' ? 'image/jpeg' : 'image/png';
+  const quality = state.outputFormat === 'jpg' ? 0.93 : undefined;
+  const url = off.toDataURL(mime, quality);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `圖片組合_${Date.now()}.${state.outputFormat}`;
+  a.click();
+});
+
+// ══════════════════════════════════════════
+//  初始化
+// ══════════════════════════════════════════
+freeHintSection.style.display = 'none';
+gridColsLabel.style.display = 'flex'; // 預設模式是 grid
+</script>
+</body>
+</html>
