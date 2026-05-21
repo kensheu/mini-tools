@@ -1080,7 +1080,7 @@ function runCompare() {
       r.status = '✓ 對上';
     } else {
       const diff = g.csvSwipe - g.hxSwipe;
-      r.status = `彙總${diff > 0 ? '多' : '少'} ${diff > 0 ? '+' : ''}${diff.toLocaleString()}`;
+      r.status = `彙總報表${diff > 0 ? '多' : '少'} ${diff > 0 ? '+' : ''}${diff.toLocaleString()}`;
     }
   });
 
@@ -1109,7 +1109,7 @@ function runCompare() {
     const [d, m] = key.split('|');
     const label = `${d.slice(5)} ${m}`;  // MM/DD 時段
 
-    const diff = g.csvSwipe - g.hxSwipe;  // 正=彙總多，負=彙總少
+    const diff = g.csvSwipe - g.hxSwipe;  // 正=彙總報表多，負=彙總報表少
     let resultHtml, resultCls;
     if (g.result === 'meeting') {
       resultHtml = '會議餐';
@@ -1122,7 +1122,7 @@ function runCompare() {
       const tip = diff > 0
         ? '彙總報表刷餐金額較多，可能為報廢數量漏填'
         : '彙總報表刷餐金額較少，可能為報廢數量填多或資料缺漏';
-      resultHtml = `彙總${diff > 0 ? '多' : '少'} ${sign}${diff.toLocaleString()} <span title="${tip}" style="cursor:help;opacity:0.6;font-size:12px">ⓘ</span>`;
+      resultHtml = `彙總報表${diff > 0 ? '多' : '少'} ${sign}${diff.toLocaleString()} <span title="${tip}" style="cursor:help;opacity:0.6;font-size:12px">ⓘ</span>`;
       resultCls = 'cmp-diff';
     }
 
