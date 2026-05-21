@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>彙總報表比對工具</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Microsoft JhengHei', 'Noto Sans TC', system-ui, sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 16px 80px;
+  }
+
+  header {
+    background: linear-gradient(135deg, #16213e, #0f3460);
+    padding: 14px 28px;
+    border-radius: 12px;
+    text-align: center;
+    width: 100%;
+    max-width: 1600px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    margin-bottom: 32px;
+    position: relative;
+  }
+  header h1 { font-size: 26px; font-weight: 600; color: #e94560; letter-spacing: 1px; }
+
+  /* 步驟指示器 */
+  .steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    width: 100%;
+    max-width: 1600px;
+    margin-bottom: 28px;
+  }
+  .step-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+  }
+  .step-circle {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    font-weight: 700;
+    border: 2px solid #0f3460;
+    background: #16213e;
+    color: #555;
+    transition: all 0.3s;
+    position: relative;
+    z-index: 1;
+  }
+  .step-item.active .step-circle {
+    border-color: #e94560;
+    background: #e94560;
+    color: #fff;
+    box-shadow: 0 0 12px rgba(233,69,96,0.4);
+  }
+  .step-item.done .step-circle {
+    border-color: #2ed573;
+    background: #2ed573;
+    color: #fff;
+  }
+  .step-label {
+    font-size: 14px;
+    color: #555;
+    text-align: center;
+    transition: color 0.3s;
+  }
+  .step-item.active .step-label { color: #e94560; }
+  .step-item.done .step-label { color: #2ed573; }
+  .step-connector {
+    flex: 1;
+    height: 2px;
+    background: #0f3460;
+    margin-bottom: 22px;
+    transition: background 0.3s;
+  }
+  .step-connector.done { background: #2ed573; }
+
+  .card {
+    background: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 12px;
+    padding: 28px;
+    width: 100%;
+    max-width: 1600px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #7ec8e3;
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .card-title:hover { color: #a8d8ea; }
+  .card-title .collapse-icon {
+    margin-left: auto;
+    font-size: 14px;
+    color: #555;
+    transition: transform 0.2s;
+  }
+  .card.collapsed .card-title { margin-bottom: 0; }
+  .card.collapsed .card-title .collapse-icon { transform: rotate(-90deg); }
+  .card-body { transition: none; }
+  .card-title .step-badge {
+    background: #e94560;
+    color: #fff;
+    font-size: 13px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 700;
+  }
+
+  /* 拖拉區 */
+  .drop-zone {
+    border: 2px dashed #0f3460;
+    border-radius: 10px;
+    padding: 36px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: #e94560;
+    background: rgba(233, 69, 96, 0.05);
+  }
+  .drop-zone.has-file {
+    border-color: #2ed573;
+    background: rgba(46, 213, 115, 0.05);
+  }
+  .drop-zone .icon { font-size: 36px; margin-bottom: 8px; display: block; }
+  .drop-zone .hint { font-size: 16px; color: #aaa; }
+  .drop-zone .hint strong { color: #e94560; }
+  .drop-zone .file-name { font-size: 16px; color: #2ed573; margin-top: 6px; }
+
+  /* 狀態訊息 */
+  .status-msg {
+    margin-top: 16px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 15px;
+    display: none;
+  }
+  .status-msg.success { display: block; background: rgba(46,213,115,0.1); border: 1px solid rgba(46,213,115,0.3); color: #2ed573; }
+  .status-msg.error { display: block; background: rgba(233,69,96,0.1); border: 1px solid rgba(233,69,96,0.3); color: #e94560; }
+  .status-msg.info { display: block; background: rgba(126,200,227,0.1); border: 1px solid rgba(126,200,227,0.3); color: #7ec8e3; }
+
+  /* 廠區選擇按鈕 */
+  .fab-select-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .fab-select-btn {
+    background: #0f1b35;
+    border: 2px solid #0f3460;
+    color: #aaa;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 15px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+    line-height: 1.5;
+  }
+  .fab-select-btn:hover {
+    border-color: #7ec8e3;
+    color: #7ec8e3;
+  }
+  .fab-select-btn.selected {
+    border-color: #e94560;
+    background: rgba(233,69,96,0.1);
+    color: #e94560;
+  }
+  .fab-select-btn .fab-count {
+    display: block;
+    font-size: 13px;
+    color: #555;
+    margin-top: 2px;
+  }
+  .fab-select-btn.selected .fab-count { color: #e94560; opacity: 0.7; }
+
+  /* 預覽表格 */
+  .preview-wrap {
+    margin-top: 16px;
+  }
+  .preview-label { font-size: 15px; color: #888; margin-bottom: 8px; }
+  .table-scroll {
+    overflow-x: auto;
+    border-radius: 8px;
+    border: 1px solid #0f3460;
+  }
+  .table-scroll-limited {
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 400px;
+    border-radius: 8px;
+    border: 1px solid #0f3460;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 16px;
+    white-space: nowrap;
+    table-layout: fixed;
+  }
+  /* 步驟二表格欄寬 */
+  #tbl-xls-detail { table-layout: auto; width: auto; min-width: 100%; }
+  #tbl-xls-detail th:nth-child(1) { min-width: 160px; }
+  #tbl-xls-detail th:nth-child(2) { min-width: 100px; }
+  #tbl-xls-detail th:nth-child(3) { min-width: 100px; }
+  #tbl-xls-detail th:nth-child(4) { min-width: 200px; width: 60%; }
+  /* 步驟一表格字體與 padding 縮小 */
+  #tbl-step1-detail { font-size: 14px; table-layout: auto; width: auto; min-width: 100%; }
+  #tbl-step1-detail th { padding: 8px 12px; font-size: 14px; }
+  #tbl-step1-detail td { padding: 6px 12px; }
+  /* 步驟一細項表欄寬 */
+  #tbl-step1-detail th:nth-child(1)  { width: 120px; }  /* 日期 */
+  #tbl-step1-detail th:nth-child(2)  { width: 56px; }  /* 星期 */
+  #tbl-step1-detail th:nth-child(3)  { width: 72px; }  /* 時段 */
+  #tbl-step1-detail th:nth-child(4)  { width: 176px; } /* 廠區 */
+  #tbl-step1-detail th:nth-child(5)  { width: 130px; } /* 店家 */
+  #tbl-step1-detail th:nth-child(6)  { width: 220px; } /* 品項 */
+  #tbl-step1-detail th:nth-child(7)  { width: 106px; }  /* 預定餐數量 */
+  #tbl-step1-detail th:nth-child(8)  { width: 80px; }  /* 線下數量 */
+  #tbl-step1-detail th:nth-child(9)  { width: 106px; }  /* 訂購總數量 */
+  #tbl-step1-detail th:nth-child(10) { width: 80px; }  /* 報廢數量 */
+  #tbl-step1-detail th:nth-child(11) { width: 52px; }  /* 價格 */
+  #tbl-step1-detail th:nth-child(12) { width: 86px; }  /* 應收款項 */
+  #tbl-step1-detail th:nth-child(13) { width: 80px; }  /* 剩餘金額 */
+  #tbl-step1-detail th:nth-child(14) { width: 80px; }  /* 刷餐金額 */
+  td { overflow: hidden; text-overflow: ellipsis; }
+  th {
+    background: #0f3460;
+    color: #7ec8e3;
+    padding: 10px 20px;
+    text-align: left;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+  td {
+    padding: 9px 20px;
+    border-bottom: 1px solid #1e2d50;
+    color: #ccc;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(15,52,96,0.4); }
+
+  /* 按鈕 */
+  .btn {
+    padding: 12px 26px;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    letter-spacing: 0.5px;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-primary { background: linear-gradient(135deg, #e94560, #c73652); color: #fff; }
+  .btn-success { background: linear-gradient(135deg, #2ed573, #1db954); color: #fff; }
+  .btn-secondary { background: #0f3460; color: #7ec8e3; }
+  .btn-row { display: flex; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+
+  /* 比對彙整表格 */
+  .compare-grid {
+    margin-top: 16px;
+    background: #0f1b35;
+    border: 1px solid #0f3460;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .compare-grid .table-scroll { max-height: 480px; overflow-y: auto; }
+  .compare-grid table { font-size: 16px; white-space: nowrap; }
+  .compare-grid th { background: #0d2040; font-size: 15px; padding: 10px 20px; }
+  .compare-grid td { padding: 9px 20px; }
+  .cmp-match { color: #2ed573; font-weight: 600; }
+  .cmp-diff  { color: #e94560; font-weight: 600; }
+  .compare-stat {
+    margin-top: 10px;
+    font-size: 15px;
+    color: #888;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .filter-btn {
+    border: 1px solid #0f3460;
+    background: #0f1b35;
+    color: #aaa;
+    border-radius: 6px;
+    padding: 4px 14px;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .filter-btn:hover { border-color: #7ec8e3; color: #7ec8e3; }
+  .filter-btn.ok { border-color: #2ed573; color: #2ed573; }
+  .filter-btn.ng { border-color: #e94560; color: #e94560; }
+  .filter-btn.active { background: #0f3460; color: #fff; border-color: #7ec8e3; }
+  .filter-btn.ok.active { background: rgba(46,213,115,0.15); border-color: #2ed573; color: #2ed573; }
+  .filter-btn.ng.active { background: rgba(233,69,96,0.15); border-color: #e94560; color: #e94560; }
+
+  /* 下載區 */
+  .download-area {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #16213e; }
+  ::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>彙總報表比對工具</h1>
+  <a href="index.html" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:13px;color:#888;text-decoration:none;transition:color 0.2s;" onmouseover="this.style.color='#e94560'" onmouseout="this.style.color='#888'">← 返回首頁</a>
+</header>
+
+<!-- 步驟指示器 -->
+<div class="steps">
+  <div class="step-item active" id="s1">
+    <div class="step-circle">1</div>
+    <div class="step-label">上傳 + 廠區拆分</div>
+  </div>
+  <div class="step-connector" id="conn1"></div>
+  <div class="step-item" id="s2">
+    <div class="step-circle">2</div>
+    <div class="step-label">上傳刷餐明細</div>
+  </div>
+  <div class="step-connector" id="conn2"></div>
+  <div class="step-item" id="s3">
+    <div class="step-circle">3</div>
+    <div class="step-label">進行比對</div>
+  </div>
+</div>
+
+<!-- 步驟一：上傳 CSV + 廠區拆分 -->
+<div class="card" id="card-step1">
+  <div class="card-title" onclick="toggleCard('card-step1')">
+    <span class="step-badge">STEP 1</span>
+    上傳彙總報表 CSV
+    <span class="collapse-icon">▼</span>
+  </div>
+  <div class="card-body">
+  <div class="drop-zone" id="dz-csv" onclick="document.getElementById('fi-csv').click()">
+    <span class="icon">📂</span>
+    <div class="hint">點擊選擇或<strong>拖放</strong> CSV / XLS / XLSX 彙總報表</div>
+    <div class="file-name" id="csv-fname"></div>
+  </div>
+  <input type="file" id="fi-csv" accept=".csv,.xls,.xlsx" style="display:none">
+  <div class="status-msg" id="st-csv"></div>
+  <div id="step1-result" style="display:none">
+    <!-- 處理說明 -->
+    <div style="margin-top:18px;background:#0f1b35;border-radius:8px;padding:14px 18px;font-size:13px;color:#aaa;line-height:2">
+      <span style="color:#7ec8e3;font-weight:600;display:block;margin-bottom:4px">已完成以下處理</span>
+      ① 依日期（由舊到新）、時段（早餐→午餐→下午茶→晚餐→宵夜）排序<br>
+      ② 移除「分店」欄<br>
+      ③ 新增「應收款項」= 訂購總數量 × 價格<br>
+      ④ 新增「剩餘金額」= 報廢數量 × 價格<br>
+      ⑤ 新增「刷餐金額」= 應收款項 − 剩餘金額<br>
+      ⑥ 依廠區拆分，請點選廠區查看明細
+    </div>
+    <!-- 廠區偵測說明 + tab 按鈕 -->
+    <div style="margin-top:18px">
+      <div style="font-size:13px;color:#888;margin-bottom:8px">偵測到以下廠區，點選切換：</div>
+      <div class="fab-select-grid" id="fab-tab-wrap"></div>
+    </div>
+    <div class="preview-wrap" style="margin-top:16px">
+      <div class="preview-label" id="detail-label">細項明細（含時段加總列）</div>
+      <div style="overflow-x:auto;overflow-y:auto;max-height:520px;border-radius:8px;border:1px solid #0f3460"><table id="tbl-step1-detail"></table></div>
+    </div>
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn btn-success" id="btn-dl-detail">下載此廠區細項 CSV</button>
+      <button class="btn btn-primary" id="btn-next1">前往上傳刷餐明細 →</button>
+    </div>
+  </div>
+  </div><!-- /card-body -->
+</div>
+
+<!-- 步驟二：上傳刷餐明細 -->
+<div class="card" id="card-step2-xls" style="display:none">
+  <div class="card-title" onclick="toggleCard('card-step2-xls')">
+    <span class="step-badge">STEP 2</span>
+    <span id="step2-title">上傳浩華刷餐明細 XLS</span>
+    <span class="collapse-icon">▼</span>
+  </div>
+  <div class="card-body">
+  <div style="font-size:13px;color:#7ec8e3;background:rgba(126,200,227,0.08);border:1px solid rgba(126,200,227,0.25);border-radius:8px;padding:10px 14px;margin-bottom:12px">
+    ℹ 只要刷餐明細包含「用餐日期、餐別、消費」欄位，無論哪個廠區皆可上傳比對。
+  </div>
+  <div style="font-size:13px;color:#888;background:#0f1b35;border:1px solid #0f3460;border-radius:8px;padding:12px 16px;margin-bottom:16px;line-height:2">
+    <span style="color:#7ec8e3;font-weight:600;display:block;margin-bottom:4px">上傳格式說明</span>
+    ① 檔案格式：<span style="color:#ccc">.xls / .xlsx</span>（不支援 PDF 或圖片）<br>
+    ② 必要欄位：<span style="color:#ccc">用餐日期、餐別、消費</span><br>
+    ③ 日期格式：<span style="color:#ccc">MM/DD/YYYY、YYYY/MM/DD、YYYY-MM-DD</span><br>
+    ④ 餐別名稱須與彙總報表一致：<span style="color:#ccc">早餐、午餐、下午茶、晚餐、宵夜</span>
+  </div>
+  <div class="drop-zone" id="dz-xls" onclick="document.getElementById('fi-xls').click()">
+    <span class="icon">📋</span>
+    <div class="hint" id="xls-hint">點擊選擇或<strong>拖放</strong> 浩華刷餐明細 .xls</div>
+    <div class="file-name" id="xls-fname"></div>
+  </div>
+  <input type="file" id="fi-xls" accept=".xls,.xlsx" style="display:none">
+  <div class="status-msg" id="st-xls"></div>
+  <div id="step2-xls-result" style="display:none">
+    <div class="preview-wrap" style="margin-top:16px">
+      <div class="preview-label" id="xls-detail-label">刷餐明細（含時段小計）</div>
+      <div class="table-scroll-limited"><table id="tbl-xls-detail"></table></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-success" id="btn-dl-xls">下載刷餐明細 CSV</button>
+      <button class="btn btn-primary" id="btn-next2">前往比對 →</button>
+    </div>
+  </div>
+  </div><!-- /card-body -->
+</div>
+
+<!-- 步驟三：比對 -->
+<div class="card" id="card-step2" style="display:none">
+  <div class="card-title" onclick="toggleCard('card-step2')">
+    <span class="step-badge">STEP 3</span>
+    <span id="step3-title">比對結果</span>
+    <span class="collapse-icon">▼</span>
+  </div>
+  <div class="card-body">
+  <div id="step2-result" style="display:none">
+    <div class="compare-stat" id="compare-stat"></div>
+    <div style="font-size:15px;font-weight:600;color:#7ec8e3;background:rgba(126,200,227,0.08);border:1px solid rgba(126,200,227,0.25);border-radius:8px;padding:10px 16px;margin:10px 0">
+      💡 可於步驟一細項表格直接修改報廢數量，或標注下午茶為會議餐，比對結果將即時同步更新。
+    </div>
+    <div class="compare-grid" id="compare-grid"></div>
+    <div class="download-area" id="download-area"></div>
+  </div>
+  </div><!-- /card-body -->
+</div>
+
+<script>
+// ── 常數 ──
+const MEAL_ORDER = { '早餐': 1, '午餐': 2, '下午茶': 3, '晚餐': 4, '宵夜': 5 };
+
+// ── 狀態 ──
+let csvRows = [];         // 排序+擴欄後的列（含所有欄位）
+let csvHeaders = [];      // 輸出欄位名稱
+let fabGroups = {};       // { 廠區名: [row, ...] }
+let selectedFab = null;   // 使用者選擇要比對的廠區
+let hxLookup = {};        // { 'YYYY/MM/DD|時段': 消費加總 }
+let hxRows = [];          // 刷餐明細原始列（用於步驟二表格顯示）
+const meetingKeys = new Set(); // 標記為會議餐的 'YYYY/MM/DD|下午茶' key
+
+// ── CSV 解析 ──
+function parseCSVLine(line) {
+  const result = [];
+  let cur = '', inQuote = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuote && line[i+1] === '"') { cur += '"'; i++; }
+      else inQuote = !inQuote;
+    } else if (ch === ',' && !inQuote) {
+      result.push(cur); cur = '';
+    } else { cur += ch; }
+  }
+  result.push(cur);
+  return result;
+}
+
+function showStatus(elId, msg, type) {
+  const el = document.getElementById(elId);
+  el.textContent = msg;
+  el.className = 'status-msg ' + type;
+}
+
+// ── 步驟指示器（三步驟）──
+function setStepState(step) {
+  document.getElementById('s1').className = 'step-item' + (step > 1 ? ' done' : ' active');
+  document.getElementById('s2').className = 'step-item' + (step === 2 ? ' active' : step > 2 ? ' done' : '');
+  document.getElementById('s3').className = 'step-item' + (step >= 3 ? ' active' : '');
+  document.getElementById('conn1').className = 'step-connector' + (step > 1 ? ' done' : '');
+  document.getElementById('conn2').className = 'step-connector' + (step > 2 ? ' done' : '');
+}
+
+// ── 拖放通用 ──
+function bindDropZone(dzId, inputId, acceptFn) {
+  const dz = document.getElementById(dzId);
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) acceptFn(e.dataTransfer.files[0]);
+  });
+  document.getElementById(inputId).addEventListener('change', e => {
+    if (e.target.files[0]) acceptFn(e.target.files[0]);
+  });
+}
+
+// 會議餐按鈕事件委派（全域，table 重渲後仍有效）
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.meeting-btn');
+  if (!btn) return;
+  const key = btn.dataset.key;
+  toggleMeeting(key, btn);
+});
+
+// ══════════════════════════════
+// 步驟一：處理彙總報表 CSV
+// ══════════════════════════════
+bindDropZone('dz-csv', 'fi-csv', handleCSV);
+
+function handleCSV(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['csv','xls','xlsx'].includes(ext)) {
+    showStatus('st-csv', '請選擇 .csv、.xls 或 .xlsx 格式的檔案', 'error');
+    return;
+  }
+  if (ext === 'csv') {
+    showStatus('st-csv', '讀取中...', 'info');
+    const reader = new FileReader();
+    reader.onload = e => {
+      let text = e.target.result;
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      const lines = text.split(/\r?\n/);
+      const rawHeader = lines[0];
+      // 跳過空列與小計列
+      const dataLines = lines.slice(1).filter(l => {
+        const t = l.trim();
+        return t !== '' && !parseCSVLine(t)[0].includes('小計');
+      });
+      processCSVData(file.name, rawHeader, dataLines);
+    };
+    reader.readAsText(file, 'UTF-8');
+  } else {
+    showStatus('st-csv', '載入 SheetJS 並解析中...', 'info');
+    loadSheetJS(() => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+          // 第一列為標題
+          const rawHeader = raw[0].map(v => String(v)).join(',');
+          // 跳過空列與小計列
+          const dataLines = raw.slice(1)
+            .filter(r => r.some(v => String(v).trim() !== '') && !String(r[0]).includes('小計'))
+            .map(r => r.map(v => csvEscape(String(v))).join(','));
+          processCSVData(file.name, rawHeader, dataLines);
+        } catch(err) {
+          showStatus('st-csv', '解析失敗：' + err.message, 'error');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  }
+}
+
+function processCSVData(filename, rawHeader, dataLines) {
+  try {
+    if (dataLines.length === 0) { showStatus('st-csv', '檔案沒有資料', 'error'); return; }
+
+    const srcHeaders = parseCSVLine(rawHeader);
+    const idxDate   = srcHeaders.findIndex(h => h.includes('日期'));
+    const idxWeek   = srcHeaders.findIndex(h => h.includes('星期'));
+    const idxMeal   = srcHeaders.findIndex(h => h.includes('時段'));
+    const idxFab    = srcHeaders.findIndex(h => h.includes('廠區'));
+    const idxShop   = srcHeaders.findIndex(h => h.includes('店家'));
+    const idxItem   = srcHeaders.findIndex(h => h.includes('品項'));
+    const idxTotal  = srcHeaders.findIndex(h => h.includes('訂購總數量'));
+    const idxPre    = srcHeaders.findIndex(h => h.includes('預定餐數量'));
+    const idxOff    = srcHeaders.findIndex(h => h.includes('線下數量'));
+    const idxWaste  = srcHeaders.findIndex(h => h.includes('報廢數量'));
+    const idxPrice  = srcHeaders.findIndex(h => h.includes('價格'));
+
+    const requiredIdx = [idxDate, idxMeal, idxFab, idxItem, idxTotal, idxPrice];
+    if (requiredIdx.some(i => i === -1)) {
+      showStatus('st-csv', '找不到必要欄位（日期/時段/廠區/品項/訂購總數量/價格），請確認格式', 'error');
+      return;
+    }
+
+    csvHeaders = ['日期','星期','時段','廠區','店家','品項','訂購總數量','預定餐數量','線下數量','報廢數量','價格','應收款項','剩餘金額','刷餐金額','比對狀態'];
+
+    const parsed = dataLines.map(l => parseCSVLine(l));
+    parsed.sort((a, b) => {
+      const dc = (a[idxDate]||'').localeCompare(b[idxDate]||'');
+      if (dc !== 0) return dc;
+      return (MEAL_ORDER[a[idxMeal]] ?? 99) - (MEAL_ORDER[b[idxMeal]] ?? 99);
+    });
+
+    csvRows = parsed.map(c => {
+      const qty    = parseFloat(c[idxTotal]) || 0;
+      const price  = parseFloat(c[idxPrice]) || 0;
+      const waste  = idxWaste >= 0 ? (parseFloat(c[idxWaste]) || 0) : 0;
+      const recv   = qty * price;
+      const remain = waste * price;
+      const swipe  = recv - remain;
+      return {
+        date:   c[idxDate]   || '',
+        week:   idxWeek >= 0 ? (c[idxWeek] || '') : '',
+        meal:   c[idxMeal]   || '',
+        fab:    c[idxFab]    || '',
+        shop:   idxShop >= 0 ? (c[idxShop] || '') : '',
+        item:   c[idxItem]   || '',
+        total:  c[idxTotal]  || '0',
+        pre:    idxPre  >= 0 ? (c[idxPre]  || '0') : '0',
+        off:    idxOff  >= 0 ? (c[idxOff]  || '0') : '0',
+        waste:  idxWaste >= 0 ? (c[idxWaste] || '0') : '0',
+        price:  c[idxPrice]  || '0',
+        recv, remain, swipe,
+        status: '',
+      };
+    });
+
+    fabGroups = {};
+    csvRows.forEach(r => {
+      if (!fabGroups[r.fab]) fabGroups[r.fab] = [];
+      fabGroups[r.fab].push(r);
+    });
+    const fabList = Object.keys(fabGroups).sort((a, b) => {
+      const na = parseInt((a.match(/fab(\d+)/i) || [0,999])[1]);
+      const nb = parseInt((b.match(/fab(\d+)/i) || [0,999])[1]);
+      return na - nb;
+    });
+
+    selectedFab = fabList[0];
+
+    document.getElementById('csv-fname').textContent = filename;
+    document.getElementById('dz-csv').classList.add('has-file');
+    showStatus('st-csv', `讀取完成！共 ${csvRows.length} 列，偵測到 ${fabList.length} 個廠區`, 'success');
+
+    const tabWrap = document.getElementById('fab-tab-wrap');
+    tabWrap.innerHTML = fabList.map(f => {
+      const short = f.replace(/^世界先進[-－\s]*/,'').replace(/\s*fab\d+$/i,'').trim() || f;
+      const fabNum = (f.match(/fab(\d+)/i) || ['','?'])[0].toUpperCase();
+      return `<button class="fab-select-btn" data-fab="${escapeAttr(f)}">
+        ${short} <span style="font-size:11px;opacity:0.7">${fabNum}</span>
+        <span class="fab-count">${fabGroups[f].length} 列</span>
+      </button>`;
+    }).join('');
+
+    tabWrap.querySelector('.fab-select-btn').classList.add('selected');
+    tabWrap.querySelectorAll('.fab-select-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        tabWrap.querySelectorAll('.fab-select-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        selectedFab = btn.dataset.fab;
+        renderFabDetail(selectedFab);
+      });
+    });
+
+    renderFabDetail(selectedFab);
+    document.getElementById('step1-result').style.display = 'block';
+  } catch(err) {
+    showStatus('st-csv', '處理失敗：' + err.message, 'error');
+  }
+}
+
+function renderFabDetail(fab) {
+  const rows = fabGroups[fab] || [];
+  const detailHeaders = [
+    { label: '日期',     tip: '來源：CSV 原始欄位' },
+    { label: '星期',     tip: '來源：CSV 原始欄位' },
+    { label: '時段',     tip: '來源：CSV 原始欄位' },
+    { label: '廠區',     tip: '來源：CSV 原始欄位' },
+    { label: '店家',     tip: '來源：CSV 原始欄位' },
+    { label: '品項',     tip: '來源：CSV 原始欄位' },
+    { label: '預定餐數量', tip: '來源：CSV 原始欄位' },
+    { label: '線下數量',  tip: '來源：CSV 原始欄位' },
+    { label: '訂購總數量', tip: '來源：CSV 原始欄位' },
+    { label: '報廢數量',  tip: '來源：CSV 原始欄位（人工填寫，可能有漏填）' },
+    { label: '價格',     tip: '來源：CSV 原始欄位' },
+    { label: '應收款項',  tip: '計算：訂購總數量 × 價格' },
+    { label: '剩餘金額',  tip: '計算：報廢數量 × 價格' },
+    { label: '刷餐金額',  tip: '計算：應收款項 − 剩餘金額' },
+  ];
+  const short = fab.replace(/^世界先進[-－\s]*/,'').trim() || fab;
+  document.getElementById('detail-label').textContent = `${short} 細項明細（含時段加總列）`;
+
+  // 建立加總 map
+  const sumMap = {};
+  rows.forEach(r => {
+    const dateKey = normalizeDate(r.date) || r.date;
+    const key = `${dateKey}|${r.meal}`;
+    if (!sumMap[key]) sumMap[key] = { total: 0, pre: 0, off: 0, waste: 0, recv: 0, remain: 0, swipe: 0 };
+    const g = sumMap[key];
+    g.total  += parseFloat(r.total)  || 0;
+    g.pre    += parseFloat(r.pre)    || 0;
+    g.off    += parseFloat(r.off)    || 0;
+    g.waste  += parseFloat(r.waste)  || 0;
+    g.recv   += r.recv;
+    g.remain += r.remain;
+    g.swipe  += r.swipe;
+  });
+
+  const table = document.getElementById('tbl-step1-detail');
+  let html = '<thead><tr>' + detailHeaders.map(h =>
+    `<th title="${h.tip}" style="cursor:help;border-bottom:1px dashed rgba(126,200,227,0.4)">${h.label} <span style="font-size:10px;opacity:0.5">ⓘ</span></th>`
+  ).join('') + '</tr></thead><tbody>';
+
+  let prevKey = null;
+  rows.forEach((r, idx) => {
+    const dateKey = normalizeDate(r.date) || r.date;
+    const key = `${dateKey}|${r.meal}`;
+    if (prevKey && key !== prevKey) html += subtotalRow(prevKey, sumMap[prevKey]);
+    prevKey = key;
+    html += `<tr data-idx="${idx}">
+      <td>${r.date}</td><td>${r.week}</td><td>${r.meal}</td><td>${r.fab}</td>
+      <td>${r.shop}</td><td>${r.item}</td>
+      <td style="text-align:right">${r.pre}</td>
+      <td style="text-align:right">${r.off}</td>
+      <td style="text-align:right">${r.total}</td>
+      <td class="cell-waste" contenteditable="true" style="text-align:right;outline:none;cursor:text;background:rgba(126,200,227,0.06);border-bottom:1px dashed rgba(126,200,227,0.3)">${r.waste}</td>
+      <td style="text-align:right">${r.price}</td>
+      <td class="cell-recv" style="text-align:right">${r.recv.toLocaleString()}</td>
+      <td class="cell-remain" style="text-align:right">${r.remain.toLocaleString()}</td>
+      <td class="cell-swipe" style="text-align:right">${r.swipe.toLocaleString()}</td>
+    </tr>`;
+  });
+  if (prevKey) html += subtotalRow(prevKey, sumMap[prevKey]);
+  html += '</tbody>';
+  table.innerHTML = html;
+
+  // 報廢數量編輯事件
+  table.querySelectorAll('td.cell-waste').forEach(td => {
+    td.addEventListener('blur', () => {
+      const tr = td.closest('tr');
+      const idx = parseInt(tr.dataset.idx);
+      const r = rows[idx];
+      const newWaste = parseFloat(td.textContent) || 0;
+      td.textContent = newWaste;
+      const price = parseFloat(r.price) || 0;
+      const qty   = parseFloat(r.total) || 0;
+      r.waste   = String(newWaste);
+      r.recv    = qty * price;
+      r.remain  = newWaste * price;
+      r.swipe   = r.recv - r.remain;
+      tr.querySelector('.cell-recv').textContent   = r.recv.toLocaleString();
+      tr.querySelector('.cell-remain').textContent = r.remain.toLocaleString();
+      tr.querySelector('.cell-swipe').textContent  = r.swipe.toLocaleString();
+      if (Object.keys(hxLookup).length > 0) runCompare();
+    });
+    // Enter 鍵確認，不換行
+    td.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); td.blur(); }
+    });
+  });
+
+  // 下載按鈕（含小計列）
+  document.getElementById('btn-dl-detail').onclick = () => {
+    const csvLines = [];
+    let prevKey = null;
+    rows.forEach(r => {
+      const dateKey = normalizeDate(r.date) || r.date;
+      const key = `${dateKey}|${r.meal}`;
+      if (prevKey && key !== prevKey) {
+        // 插入小計列
+        const g = sumMap[prevKey];
+        csvLines.push(['小計','','','','','',g.pre,g.off,g.total,g.waste,'',g.recv,g.remain,g.swipe].map(csvEscape).join(','));
+      }
+      prevKey = key;
+      csvLines.push([r.date,r.week,r.meal,r.fab,r.shop,r.item,r.pre,r.off,r.total,r.waste,r.price,r.recv,r.remain,r.swipe].map(csvEscape).join(','));
+    });
+    if (prevKey) {
+      const g = sumMap[prevKey];
+      csvLines.push(['小計','','','','','',g.pre,g.off,g.total,g.waste,'',g.recv,g.remain,g.swipe].map(csvEscape).join(','));
+    }
+    const content = '\uFEFF' + detailHeaders.map(h => h.label).join(',') + '\n' + csvLines.join('\n');
+    downloadBlob(content, `彙總報表_${short}_細項.csv`);
+  };
+}
+
+function subtotalRow(key, g) {
+  const [, meal] = key.split('|');
+  const isMeeting = meetingKeys.has(key);
+  const meetingBtn = meal === '下午茶'
+    ? `<button class="meeting-btn" data-key="${escapeAttr(key)}" style="
+        margin-left:0;padding:2px 10px;font-size:11px;font-family:inherit;font-weight:700;
+        border-radius:20px;cursor:pointer;border:2px solid;transition:all 0.2s;letter-spacing:0.5px;
+        ${isMeeting
+          ? 'background:rgba(46,213,115,0.2);border-color:#2ed573;color:#2ed573;box-shadow:0 0 8px rgba(46,213,115,0.3);'
+          : 'background:rgba(233,162,70,0.15);border-color:#e9a246;color:#e9a246;box-shadow:0 0 6px rgba(233,162,70,0.2);'}
+      ">${isMeeting ? '✓ 已標示為會議餐' : '⚑ 確定為會議餐'}</button>`
+    : '';
+  const [date] = key.split('|');
+  const mmdd = date.slice(5);
+  return `<tr style="background:#0f2a4a;font-weight:600;color:#7ec8e3;border-top:1px solid #1e4080">
+    <td colspan="4"></td>
+    <td style="font-size:14px">${meetingBtn}</td>
+    <td style="font-size:14px;letter-spacing:1px;color:#7ec8e3">${mmdd} ${meal} 小計</td>
+    <td style="text-align:right">${g.pre}</td>
+    <td style="text-align:right">${g.off}</td>
+    <td style="text-align:right">${g.total}</td>
+    <td style="text-align:right">${g.waste}</td>
+    <td></td>
+    <td style="text-align:right">${g.recv.toLocaleString()}</td>
+    <td style="text-align:right">${g.remain.toLocaleString()}</td>
+    <td style="text-align:right">${g.swipe.toLocaleString()}</td>
+  </tr>`;
+}
+
+function toggleMeeting(key, btn) {
+  if (meetingKeys.has(key)) {
+    meetingKeys.delete(key);
+    btn.textContent = '⚑ 確定為會議餐';
+    btn.style.background = 'rgba(233,162,70,0.15)';
+    btn.style.borderColor = '#e9a246';
+    btn.style.color = '#e9a246';
+    btn.style.boxShadow = '0 0 6px rgba(233,162,70,0.2)';
+  } else {
+    meetingKeys.add(key);
+    btn.textContent = '✓ 已標示為會議餐';
+    btn.style.background = 'rgba(46,213,115,0.2)';
+    btn.style.borderColor = '#2ed573';
+    btn.style.color = '#2ed573';
+    btn.style.boxShadow = '0 0 8px rgba(46,213,115,0.3)';
+  }
+  if (Object.keys(hxLookup).length > 0) runCompare();
+}
+
+document.getElementById('btn-next1').addEventListener('click', () => {
+  if (!selectedFab) return;
+  setStepState(2);
+
+  const shortName = selectedFab.replace(/^世界先進[-－\s]*/,'') || selectedFab;
+  document.getElementById('step2-title').textContent =
+    `上傳「${shortName}」的浩華刷餐明細 XLS`;
+  document.getElementById('xls-hint').innerHTML =
+    `點擊選擇或<strong>拖放</strong> ${shortName} 的浩華刷餐明細 .xls`;
+
+  document.getElementById('xls-fname').textContent = '';
+  document.getElementById('dz-xls').classList.remove('has-file');
+  document.getElementById('st-xls').className = 'status-msg';
+  document.getElementById('step2-xls-result').style.display = 'none';
+  document.getElementById('fi-xls').value = '';
+
+  document.getElementById('card-step2-xls').style.display = 'block';
+  document.getElementById('card-step2-xls').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+// ══════════════════════════════
+// 步驟三：解析浩華 XLS + 比對
+// ══════════════════════════════
+bindDropZone('dz-xls', 'fi-xls', handleXLS);
+
+function handleXLS(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['xls','xlsx'].includes(ext)) {
+    showStatus('st-xls', '請選擇 .xls 或 .xlsx 格式的檔案', 'error');
+    return;
+  }
+  showStatus('st-xls', '載入 SheetJS 並解析中...', 'info');
+
+  // 動態載入 SheetJS
+  loadSheetJS(() => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+        // 找標題列
+        let hdrRow = -1;
+        for (let i = 0; i < Math.min(raw.length, 20); i++) {
+          const row = raw[i].map(v => String(v).trim());
+          if (row.includes('用餐日期') && row.includes('餐別')) { hdrRow = i; break; }
+        }
+        if (hdrRow === -1) {
+          showStatus('st-xls', '找不到「用餐日期」和「餐別」欄位，請確認檔案格式', 'error');
+          return;
+        }
+
+        const hdr = raw[hdrRow].map(v => String(v).trim());
+        const iDate = hdr.findIndex(h => h.includes('用餐日期'));
+        const iMeal = hdr.findIndex(h => h.includes('餐別'));
+        const iAmt  = hdr.findIndex(h => h.includes('消費'));
+        const iNote = hdr.findIndex(h => h.includes('備註'));
+
+        // 建立查找表：YYYY/MM/DD|時段 → 加總消費，並儲存原始列
+        hxLookup = {};
+        hxRows = [];
+        for (let i = hdrRow + 1; i < raw.length; i++) {
+          const row = raw[i];
+          const rawDate = String(row[iDate] || '').trim();
+          const meal    = String(row[iMeal] || '').trim();
+          const amt     = parseFloat(row[iAmt]) || 0;
+          if (!rawDate || !meal || amt === 0) continue;
+
+          const dateKey = normalizeDate(rawDate);
+          if (!dateKey) continue;
+
+          const key = `${dateKey}|${meal}`;
+          hxLookup[key] = (hxLookup[key] || 0) + amt;
+
+          hxRows.push({
+            date: dateKey,
+            meal: meal,
+            amt:  amt,
+            note: iNote >= 0 ? String(row[iNote] || '').trim() : '',
+          });
+        }
+
+        showStatus('st-xls', `解析完成！共 ${hxRows.length} 筆`, 'success');
+        document.getElementById('xls-fname').textContent = file.name;
+        document.getElementById('dz-xls').classList.add('has-file');
+
+        renderXLSDetail();
+        document.getElementById('step2-xls-result').style.display = 'block';
+      } catch(err) {
+        showStatus('st-xls', '解析失敗：' + err.message, 'error');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// 日期格式轉換：MM/DD/YYYY → YYYY/MM/DD
+// 也支援已是 YYYY-MM-DD 或 YYYY/MM/DD 格式
+function normalizeDate(raw) {
+  raw = raw.trim();
+  // MM/DD/YYYY
+  let m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return `${m[3]}/${m[1].padStart(2,'0')}/${m[2].padStart(2,'0')}`;
+  // YYYY/MM/DD
+  m = raw.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+  if (m) return raw;
+  // YYYY-MM-DD
+  m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[1]}/${m[2]}/${m[3]}`;
+  return null;
+}
+
+// ══════════════════════════════
+// 步驟二：渲染刷餐明細表格
+// ══════════════════════════════
+function renderXLSDetail() {
+  // 依日期+餐別排序
+  const sorted = hxRows.slice().sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+    return (MEAL_ORDER[a.meal] ?? 99) - (MEAL_ORDER[b.meal] ?? 99);
+  });
+
+  // 建立分組小計
+  const sumMap = {};
+  sorted.forEach(r => {
+    const key = `${r.date}|${r.meal}`;
+    sumMap[key] = (sumMap[key] || 0) + r.amt;
+  });
+
+  const table = document.getElementById('tbl-xls-detail');
+  let html = `<thead><tr>
+    <th>用餐日期</th><th>餐別</th><th style="text-align:right">消費</th><th>備註</th>
+  </tr></thead><tbody>`;
+
+  let prevKey = null;
+  sorted.forEach(r => {
+    const key = `${r.date}|${r.meal}`;
+    if (prevKey && key !== prevKey) {
+      html += xlsSubtotalRow(prevKey, sumMap[prevKey]);
+    }
+    prevKey = key;
+    const noteStyle = r.note ? 'color:#e9a246' : 'color:#555';
+    html += `<tr>
+      <td>${r.date}</td>
+      <td>${r.meal}</td>
+      <td style="text-align:right">${r.amt.toLocaleString()}</td>
+      <td style="${noteStyle}">${r.note}</td>
+    </tr>`;
+  });
+  if (prevKey) html += xlsSubtotalRow(prevKey, sumMap[prevKey]);
+  html += '</tbody>';
+  table.innerHTML = html;
+
+  // 下載按鈕
+  document.getElementById('btn-dl-xls').onclick = () => {
+    const lines = [];
+    let prevKey = null;
+    sorted.forEach(r => {
+      const key = `${r.date}|${r.meal}`;
+      if (prevKey && key !== prevKey) {
+        lines.push(['小計','',sumMap[prevKey],''].map(csvEscape).join(','));
+      }
+      prevKey = key;
+      lines.push([r.date, r.meal, r.amt, r.note].map(csvEscape).join(','));
+    });
+    if (prevKey) lines.push(['小計','',sumMap[prevKey],''].map(csvEscape).join(','));
+    const content = '\uFEFF用餐日期,餐別,消費,備註\n' + lines.join('\n');
+    const shortFab = (selectedFab || '').replace(/[/\\:*?"<>|]/g, '_');
+    downloadBlob(content, `刷餐明細_${shortFab}.csv`);
+  };
+}
+
+function xlsSubtotalRow(key, total) {
+  const [date, meal] = key.split('|');
+  return `<tr style="background:#0f2a4a;font-weight:600;color:#7ec8e3;border-top:1px solid #1e4080">
+    <td colspan="2" style="text-align:right;color:#7ec8e3;font-size:14px;letter-spacing:1px">${date.slice(5)} ${meal} 小計</td>
+    <td style="text-align:right">${total.toLocaleString()}</td>
+    <td></td>
+  </tr>`;
+}
+
+// 步驟二「前往比對」按鈕
+document.getElementById('btn-next2').addEventListener('click', () => {
+  setStepState(3);
+  document.getElementById('card-step2').style.display = 'block';
+  document.getElementById('step2-result').style.display = 'block';
+  runCompare();
+  document.getElementById('card-step2').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+function runCompare() {
+  const targetRows = fabGroups[selectedFab] || [];
+
+  // 第一步：以日期+時段為單位，加總 CSV 刷餐金額，對應浩華消費
+  const groupMap = {};
+  targetRows.forEach(r => {
+    const dateKey = normalizeDate(r.date) || r.date;
+    const key = `${dateKey}|${r.meal}`;
+    if (!groupMap[key]) groupMap[key] = { csvRecv: 0, csvRemain: 0, csvSwipe: 0, hxSwipe: hxLookup[key] || 0 };
+    groupMap[key].csvRecv   += r.recv;
+    groupMap[key].csvRemain += r.remain;
+    groupMap[key].csvSwipe  += r.swipe;
+  });
+
+  // 第二步：判斷每組的比對結果
+  let matchCount = 0, diffCount = 0, meetingCount = 0;
+  Object.entries(groupMap).forEach(([key, g]) => {
+    if (meetingKeys.has(key)) {
+      g.result = 'meeting';
+      meetingCount++;
+    } else if (Math.abs(g.hxSwipe - g.csvSwipe) < 0.01) {
+      g.result = 'match';
+      matchCount++;
+    } else {
+      g.result = 'diff';
+      diffCount++;
+    }
+  });
+
+  // 第三步：每列的比對狀態 = 該日期+時段整組的結果
+  targetRows.forEach(r => {
+    const dateKey = normalizeDate(r.date) || r.date;
+    const key = `${dateKey}|${r.meal}`;
+    const g = groupMap[key];
+    if (g.result === 'meeting') {
+      r.status = '會議餐';
+    } else if (g.result === 'match') {
+      r.status = '✓ 對上';
+    } else {
+      const diff = g.csvSwipe - g.hxSwipe;
+      r.status = `彙總${diff > 0 ? '多' : '少'} ${diff > 0 ? '+' : ''}${diff.toLocaleString()}`;
+    }
+  });
+
+  const totalGroups = Object.keys(groupMap).length;
+  const shortName = selectedFab.replace(/^世界先進[-－\s]*/,'') || selectedFab;
+
+  // 統計列（按鈕篩選）
+  document.getElementById('compare-stat').innerHTML =
+    `比對廠區：<strong style="color:#7ec8e3">${shortName}</strong>　共 ${totalGroups} 組　` +
+    `<button class="filter-btn active" id="filter-all" onclick="filterCompare('all')">全部 ${totalGroups}</button>` +
+    `<button class="filter-btn ok" id="filter-match" onclick="filterCompare('match')">✓ 相符 ${matchCount}</button>` +
+    (meetingCount ? `<button class="filter-btn" id="filter-meeting" onclick="filterCompare('meeting')" style="border-color:#2ed573;color:#2ed573">會議餐 ${meetingCount}</button>` : '') +
+    (diffCount ? `<button class="filter-btn ng" id="filter-diff" onclick="filterCompare('diff')">差異 ${diffCount}</button>` : '');
+
+  // 左右對照表格
+  const sortedKeys = Object.keys(groupMap).sort((a, b) => {
+    const [da, ma] = a.split('|');
+    const [db, mb] = b.split('|');
+    if (da !== db) return da.localeCompare(db);
+    return (MEAL_ORDER[ma] ?? 99) - (MEAL_ORDER[mb] ?? 99);
+  });
+
+  let tableRows = '';
+  sortedKeys.forEach(key => {
+    const g = groupMap[key];
+    const [d, m] = key.split('|');
+    const label = `${d.slice(5)} ${m}`;  // MM/DD 時段
+
+    const diff = g.csvSwipe - g.hxSwipe;  // 正=彙總多，負=彙總少
+    let resultHtml, resultCls;
+    if (g.result === 'meeting') {
+      resultHtml = '會議餐';
+      resultCls = 'cmp-match';
+    } else if (Math.abs(diff) < 0.01) {
+      resultHtml = '✓ 相符';
+      resultCls = 'cmp-match';
+    } else {
+      const sign = diff > 0 ? '+' : '';
+      const tip = diff > 0
+        ? '彙總報表刷餐金額較多，可能為報廢數量漏填'
+        : '彙總報表刷餐金額較少，可能為報廢數量填多或資料缺漏';
+      resultHtml = `彙總${diff > 0 ? '多' : '少'} ${sign}${diff.toLocaleString()} <span title="${tip}" style="cursor:help;opacity:0.6;font-size:12px">ⓘ</span>`;
+      resultCls = 'cmp-diff';
+    }
+
+    tableRows += `<tr data-result="${g.result}">
+      <td>${label}</td>
+      <td style="text-align:center">${g.result === 'meeting' ? '—' : g.csvSwipe.toLocaleString()}</td>
+      <td style="text-align:center">${g.result === 'meeting' ? '—' : (g.hxSwipe > 0 ? g.hxSwipe.toLocaleString() : '—')}</td>
+      <td class="${resultCls}" style="text-align:center">${resultHtml}</td>
+    </tr>`;
+  });
+
+  document.getElementById('compare-grid').innerHTML = `
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th>日期 時段</th>
+          <th title="計算：應收款項 − 剩餘金額（來自彙總報表）" style="cursor:help;text-align:center">彙總報表 ⓘ</th>
+          <th title="來源：客戶提供的浩華刷餐明細 XLS 消費加總" style="cursor:help;text-align:center">刷餐明細 ⓘ</th>
+          <th style="text-align:center">比對結果</th>
+        </tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+  `;
+
+  // 下載按鈕：選定廠區
+  const dlArea = document.getElementById('download-area');
+  dlArea.innerHTML = '';
+
+  const dlBtn = document.createElement('button');
+  dlBtn.className = 'btn btn-success';
+  dlBtn.textContent = `下載 ${shortName} CSV`;
+  dlBtn.addEventListener('click', () => downloadFab(selectedFab));
+  dlArea.appendChild(dlBtn);
+
+  // 若有多廠區，提示可回步驟一換廠比對
+  if (Object.keys(fabGroups).length > 1) {
+    const switchBtn = document.createElement('button');
+    switchBtn.className = 'btn btn-secondary';
+    switchBtn.textContent = '← 換一個廠區比對';
+    switchBtn.addEventListener('click', () => {
+      // s1 已完成（綠燈），s2/s3 重置
+      document.getElementById('s1').className = 'step-item done';
+      document.getElementById('s2').className = 'step-item';
+      document.getElementById('s3').className = 'step-item';
+      document.getElementById('conn1').className = 'step-connector done';
+      document.getElementById('conn2').className = 'step-connector';
+      document.getElementById('card-step2-xls').style.display = 'none';
+      document.getElementById('card-step2').style.display = 'none';
+      // 展開步驟一（若收合）
+      const card1 = document.getElementById('card-step1');
+      if (card1.classList.contains('collapsed')) toggleCard('card-step1');
+      card1.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    dlArea.appendChild(switchBtn);
+  }
+
+  document.getElementById('step2-result').style.display = 'block';
+  setStepState(3);
+}
+
+function filterCompare(type) {
+  // 更新按鈕 active 狀態
+  ['filter-all','filter-match','filter-meeting','filter-diff'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('active');
+  });
+  const activeId = type === 'all' ? 'filter-all' : type === 'match' ? 'filter-match' : type === 'meeting' ? 'filter-meeting' : 'filter-diff';
+  const activeEl = document.getElementById(activeId);
+  if (activeEl) activeEl.classList.add('active');
+
+  // 篩選表格列
+  document.querySelectorAll('#compare-grid tbody tr').forEach(tr => {
+    if (type === 'all' || tr.dataset.result === type) {
+      tr.style.display = '';
+    } else {
+      tr.style.display = 'none';
+    }
+  });
+}
+
+function rowToCSV(r) {
+  const vals = [
+    r.date, r.week, r.meal, r.fab, r.shop, r.item,
+    r.total, r.pre, r.off, r.waste, r.price,
+    r.recv, r.remain, r.swipe, r.status
+  ];
+  return vals.map(v => {
+    const s = String(v ?? '');
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g,'""')}"` : s;
+  }).join(',');
+}
+
+function buildCSV(rows) {
+  const bom = '\uFEFF';
+  const header = csvHeaders.join(',');
+  return bom + header + '\n' + rows.map(rowToCSV).join('\n');
+}
+
+function csvEscape(v) {
+  const s = String(v ?? '');
+  return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g,'""')}"` : s;
+}
+
+function downloadBlob(content, filename) {
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadFab(fab) {
+  const rows = fabGroups[fab];
+  const shortFab = fab.replace(/[/\\:*?"<>|]/g, '_');
+  downloadBlob(buildCSV(rows), `餐點明細_${shortFab}.csv`);
+}
+
+// ── 收合/展開 card ──
+function toggleCard(cardId) {
+  const card = document.getElementById(cardId);
+  const body = card.querySelector('.card-body');
+  if (!body) return;
+  const collapsed = card.classList.toggle('collapsed');
+  body.style.display = collapsed ? 'none' : '';
+}
+
+// ── 工具函式 ──
+function escapeAttr(str) {
+  return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+}
+
+// ── 動態載入 SheetJS ──
+let sheetJSLoaded = false;
+function loadSheetJS(cb) {
+  if (sheetJSLoaded) { cb(); return; }
+  const s = document.createElement('script');
+  s.src = 'https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js';
+  s.onload = () => { sheetJSLoaded = true; cb(); };
+  s.onerror = () => showStatus('st-xls', '無法載入 SheetJS（請確認網路連線）', 'error');
+  document.head.appendChild(s);
+}
+</script>
+</body>
+</html>
