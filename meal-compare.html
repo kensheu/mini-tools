@@ -233,7 +233,8 @@
   #tbl-xls-detail th:nth-child(1) { min-width: 160px; }
   #tbl-xls-detail th:nth-child(2) { min-width: 100px; }
   #tbl-xls-detail th:nth-child(3) { min-width: 100px; }
-  #tbl-xls-detail th:nth-child(4) { min-width: 200px; width: 60%; }
+  #tbl-xls-detail th:nth-child(4) { min-width: 100px; }
+  #tbl-xls-detail th:nth-child(5) { min-width: 200px; width: 60%; }
   /* 步驟一表格字體與 padding 縮小 */
   #tbl-step1-detail { font-size: 14px; table-layout: auto; width: auto; min-width: 100%; }
   #tbl-step1-detail th { padding: 8px 12px; font-size: 14px; }
@@ -403,7 +404,7 @@
       <div style="overflow-x:auto;overflow-y:auto;max-height:520px;border-radius:8px;border:1px solid #0f3460"><table id="tbl-step1-detail"></table></div>
     </div>
     <div class="btn-row" style="margin-top:16px">
-      <button class="btn btn-success" id="btn-dl-detail">下載此廠區細項 CSV</button>
+      <button class="btn btn-success" id="btn-dl-detail">下載此廠區細項 Excel</button>
       <button class="btn btn-primary" id="btn-next1">前往上傳刷餐明細 →</button>
     </div>
   </div>
@@ -437,11 +438,14 @@
   <div class="status-msg" id="st-xls"></div>
   <div id="step2-xls-result" style="display:none">
     <div class="preview-wrap" style="margin-top:16px">
-      <div class="preview-label" id="xls-detail-label">刷餐明細（含時段小計）</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+        <div class="preview-label" style="margin-bottom:0">刷餐明細（含時段小計）</div>
+        <div id="xls-filter-btns" style="display:flex;gap:6px"></div>
+      </div>
       <div class="table-scroll-limited"><table id="tbl-xls-detail"></table></div>
     </div>
     <div class="btn-row">
-      <button class="btn btn-success" id="btn-dl-xls">下載刷餐明細 CSV</button>
+      <button class="btn btn-success" id="btn-dl-xls">下載刷餐明細 Excel</button>
       <button class="btn btn-primary" id="btn-next2">前往比對 →</button>
     </div>
   </div>
@@ -459,7 +463,7 @@
   <div id="step2-result" style="display:none">
     <div class="compare-stat" id="compare-stat"></div>
     <div style="font-size:15px;font-weight:600;color:#7ec8e3;background:rgba(126,200,227,0.08);border:1px solid rgba(126,200,227,0.25);border-radius:8px;padding:10px 16px;margin:10px 0">
-      💡 可於步驟一細項表格直接修改報廢數量，或標注下午茶為會議餐，比對結果將即時同步更新。
+      💡 可於步驟一細項表格直接修改報廢數量，比對結果將即時同步更新。
     </div>
     <div class="compare-grid" id="compare-grid"></div>
     <div class="download-area" id="download-area"></div>
@@ -476,9 +480,9 @@ let csvRows = [];         // 排序+擴欄後的列（含所有欄位）
 let csvHeaders = [];      // 輸出欄位名稱
 let fabGroups = {};       // { 廠區名: [row, ...] }
 let selectedFab = null;   // 使用者選擇要比對的廠區
-let hxLookup = {};        // { 'YYYY/MM/DD|時段': 消費加總 }
+let hxLookup = {};        // { 'YYYY/MM/DD|時段': 消費加總（不含會議餐） }
+let meetingLookup = {};   // { 'YYYY/MM/DD|時段': 會議餐消費加總（工號4位數） }
 let hxRows = [];          // 刷餐明細原始列（用於步驟二表格顯示）
-const meetingKeys = new Set(); // 標記為會議餐的 'YYYY/MM/DD|下午茶' key
 
 // ── CSV 解析 ──
 function parseCSVLine(line) {
@@ -526,13 +530,6 @@ function bindDropZone(dzId, inputId, acceptFn) {
   });
 }
 
-// 會議餐按鈕事件委派（全域，table 重渲後仍有效）
-document.addEventListener('click', e => {
-  const btn = e.target.closest('.meeting-btn');
-  if (!btn) return;
-  const key = btn.dataset.key;
-  toggleMeeting(key, btn);
-});
 
 // ══════════════════════════════
 // 步驟一：處理彙總報表 CSV
@@ -574,7 +571,12 @@ function handleCSV(file) {
           const rawHeader = raw[0].map(v => String(v)).join(',');
           // 跳過空列與小計列
           const dataLines = raw.slice(1)
-            .filter(r => r.some(v => String(v).trim() !== '') && !String(r[0]).includes('小計'))
+            .filter(r => {
+              if (!r.some(v => String(v).trim() !== '')) return false; // 整列空白
+              if (r.some(v => String(v).includes('小計'))) return false; // 小計列
+              if (!String(r[0]).trim()) return false; // 日期欄空白
+              return true;
+            })
             .map(r => r.map(v => csvEscape(String(v))).join(','));
           processCSVData(file.name, rawHeader, dataLines);
         } catch(err) {
@@ -776,47 +778,98 @@ function renderFabDetail(fab) {
     });
   });
 
-  // 下載按鈕（含小計列）
+  // 下載按鈕（Excel 含公式與小計樣式）
   document.getElementById('btn-dl-detail').onclick = () => {
-    const csvLines = [];
-    let prevKey = null;
-    rows.forEach(r => {
-      const dateKey = normalizeDate(r.date) || r.date;
-      const key = `${dateKey}|${r.meal}`;
-      if (prevKey && key !== prevKey) {
-        // 插入小計列
-        const g = sumMap[prevKey];
-        csvLines.push(['小計','','','','','',g.pre,g.off,g.total,g.waste,'',g.recv,g.remain,g.swipe].map(csvEscape).join(','));
-      }
-      prevKey = key;
-      csvLines.push([r.date,r.week,r.meal,r.fab,r.shop,r.item,r.pre,r.off,r.total,r.waste,r.price,r.recv,r.remain,r.swipe].map(csvEscape).join(','));
+    loadExcelJS(async () => {
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet(short);
+
+      // 欄寬
+      ws.columns = [
+        { width: 13 }, { width: 7 },  { width: 9 },  { width: 20 },
+        { width: 16 }, { width: 30 }, { width: 11 }, { width: 11 },
+        { width: 11 }, { width: 11 }, { width: 9 },  { width: 13 },
+        { width: 13 }, { width: 13 },
+      ];
+
+      // 標題列
+      const hdrRow = ws.addRow(detailHeaders.map(h => h.label));
+      hdrRow.eachCell(cell => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      });
+      hdrRow.height = 20;
+
+      let prevKey = null;
+      let groupStartRow = 2; // Excel 列號（標題=1，資料從2開始）
+      let curRow = 2;
+
+      const flushSubtotal = (key) => {
+        const r1 = groupStartRow, r2 = curRow - 1;
+        const [d, m] = key.split('|');
+        const sr = ws.addRow(['', '', '', '', '', `${d.slice(5)} ${m} 小計`, 0, 0, 0, 0, '', 0, 0, 0]);
+        sr.getCell(7).value  = { formula: `SUM(G${r1}:G${r2})` };
+        sr.getCell(8).value  = { formula: `SUM(H${r1}:H${r2})` };
+        sr.getCell(9).value  = { formula: `SUM(I${r1}:I${r2})` };
+        sr.getCell(10).value = { formula: `SUM(J${r1}:J${r2})` };
+        sr.getCell(12).value = { formula: `SUM(L${r1}:L${r2})` };
+        sr.getCell(13).value = { formula: `SUM(M${r1}:M${r2})` };
+        sr.getCell(14).value = { formula: `SUM(N${r1}:N${r2})` };
+        sr.eachCell({ includeEmpty: true }, cell => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF59D' } };
+          cell.font = { bold: true };
+        });
+        sr.getCell(6).alignment = { horizontal: 'left' };
+        for (let c = 7; c <= 14; c++) {
+          sr.getCell(c).alignment = { horizontal: 'right' };
+          if (c !== 11) sr.getCell(c).numFmt = '#,##0';
+        }
+        curRow++;
+        groupStartRow = curRow;
+      };
+
+      rows.forEach(r => {
+        const dateKey = normalizeDate(r.date) || r.date;
+        const key = `${dateKey}|${r.meal}`;
+        if (prevKey && key !== prevKey) {
+          flushSubtotal(prevKey);
+        }
+        prevKey = key;
+        const dr = ws.addRow([
+          r.date, r.week, r.meal, r.fab, r.shop, r.item,
+          Number(r.pre), Number(r.off), Number(r.total), Number(r.waste),
+          Number(r.price), 0, 0, 0,
+        ]);
+        dr.getCell(12).value = { formula: `I${curRow}*K${curRow}` };
+        dr.getCell(13).value = { formula: `J${curRow}*K${curRow}` };
+        dr.getCell(14).value = { formula: `L${curRow}-M${curRow}` };
+        for (let c = 7; c <= 14; c++) {
+          dr.getCell(c).numFmt = '#,##0';
+          dr.getCell(c).alignment = { horizontal: 'right' };
+        }
+        curRow++;
+      });
+      if (prevKey) flushSubtotal(prevKey);
+
+      // 輸出下載
+      const buf = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `彙總報表_${short}_細項.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
     });
-    if (prevKey) {
-      const g = sumMap[prevKey];
-      csvLines.push(['小計','','','','','',g.pre,g.off,g.total,g.waste,'',g.recv,g.remain,g.swipe].map(csvEscape).join(','));
-    }
-    const content = '\uFEFF' + detailHeaders.map(h => h.label).join(',') + '\n' + csvLines.join('\n');
-    downloadBlob(content, `彙總報表_${short}_細項.csv`);
   };
 }
 
 function subtotalRow(key, g) {
-  const [, meal] = key.split('|');
-  const isMeeting = meetingKeys.has(key);
-  const meetingBtn = meal === '下午茶'
-    ? `<button class="meeting-btn" data-key="${escapeAttr(key)}" style="
-        margin-left:0;padding:2px 10px;font-size:11px;font-family:inherit;font-weight:700;
-        border-radius:20px;cursor:pointer;border:2px solid;transition:all 0.2s;letter-spacing:0.5px;
-        ${isMeeting
-          ? 'background:rgba(46,213,115,0.2);border-color:#2ed573;color:#2ed573;box-shadow:0 0 8px rgba(46,213,115,0.3);'
-          : 'background:rgba(233,162,70,0.15);border-color:#e9a246;color:#e9a246;box-shadow:0 0 6px rgba(233,162,70,0.2);'}
-      ">${isMeeting ? '✓ 已標示為會議餐' : '⚑ 確定為會議餐'}</button>`
-    : '';
-  const [date] = key.split('|');
+  const [date, meal] = key.split('|');
   const mmdd = date.slice(5);
   return `<tr style="background:#0f2a4a;font-weight:600;color:#7ec8e3;border-top:1px solid #1e4080">
-    <td colspan="4"></td>
-    <td style="font-size:14px">${meetingBtn}</td>
+    <td colspan="5"></td>
     <td style="font-size:14px;letter-spacing:1px;color:#7ec8e3">${mmdd} ${meal} 小計</td>
     <td style="text-align:right">${g.pre}</td>
     <td style="text-align:right">${g.off}</td>
@@ -827,25 +880,6 @@ function subtotalRow(key, g) {
     <td style="text-align:right">${g.remain.toLocaleString()}</td>
     <td style="text-align:right">${g.swipe.toLocaleString()}</td>
   </tr>`;
-}
-
-function toggleMeeting(key, btn) {
-  if (meetingKeys.has(key)) {
-    meetingKeys.delete(key);
-    btn.textContent = '⚑ 確定為會議餐';
-    btn.style.background = 'rgba(233,162,70,0.15)';
-    btn.style.borderColor = '#e9a246';
-    btn.style.color = '#e9a246';
-    btn.style.boxShadow = '0 0 6px rgba(233,162,70,0.2)';
-  } else {
-    meetingKeys.add(key);
-    btn.textContent = '✓ 已標示為會議餐';
-    btn.style.background = 'rgba(46,213,115,0.2)';
-    btn.style.borderColor = '#2ed573';
-    btn.style.color = '#2ed573';
-    btn.style.boxShadow = '0 0 8px rgba(46,213,115,0.3)';
-  }
-  if (Object.keys(hxLookup).length > 0) runCompare();
 }
 
 document.getElementById('btn-next1').addEventListener('click', () => {
@@ -907,12 +941,17 @@ function handleXLS(file) {
         const iMeal = hdr.findIndex(h => h.includes('餐別'));
         const iAmt  = hdr.findIndex(h => h.includes('消費'));
         const iNote = hdr.findIndex(h => h.includes('備註'));
+        const iEmp  = hdr.findIndex(h => h.includes('工號'));
 
         // 建立查找表：YYYY/MM/DD|時段 → 加總消費，並儲存原始列
         hxLookup = {};
+        meetingLookup = {};
         hxRows = [];
         for (let i = hdrRow + 1; i < raw.length; i++) {
           const row = raw[i];
+          // 跳過小計列（工號欄含「小計」）
+          if (iEmp >= 0 && String(row[iEmp] || '').includes('小計')) continue;
+          if (row.some(v => String(v).includes('小計'))) continue;
           const rawDate = String(row[iDate] || '').trim();
           const meal    = String(row[iMeal] || '').trim();
           const amt     = parseFloat(row[iAmt]) || 0;
@@ -921,13 +960,22 @@ function handleXLS(file) {
           const dateKey = normalizeDate(rawDate);
           if (!dateKey) continue;
 
+          const empNo = iEmp >= 0 ? String(row[iEmp] || '').trim() : '';
+          const isMeeting = /^\d{4}$/.test(empNo);
           const key = `${dateKey}|${meal}`;
-          hxLookup[key] = (hxLookup[key] || 0) + amt;
+
+          if (isMeeting) {
+            meetingLookup[key] = (meetingLookup[key] || 0) + amt;
+          } else {
+            hxLookup[key] = (hxLookup[key] || 0) + amt;
+          }
 
           hxRows.push({
             date: dateKey,
             meal: meal,
             amt:  amt,
+            empNo: empNo,
+            isMeeting: isMeeting,
             note: iNote >= 0 ? String(row[iNote] || '').trim() : '',
           });
         }
@@ -972,63 +1020,138 @@ function renderXLSDetail() {
     return (MEAL_ORDER[a.meal] ?? 99) - (MEAL_ORDER[b.meal] ?? 99);
   });
 
-  // 建立分組小計
-  const sumMap = {};
+  // 建立分組小計（全部、一般、會議餐）
+  const sumMap = {}, normalMap = {}, mtgMap = {};
   sorted.forEach(r => {
     const key = `${r.date}|${r.meal}`;
-    sumMap[key] = (sumMap[key] || 0) + r.amt;
+    sumMap[key]    = (sumMap[key]    || 0) + r.amt;
+    if (r.isMeeting) mtgMap[key]    = (mtgMap[key]    || 0) + r.amt;
+    else             normalMap[key] = (normalMap[key] || 0) + r.amt;
   });
 
   const table = document.getElementById('tbl-xls-detail');
   let html = `<thead><tr>
-    <th>用餐日期</th><th>餐別</th><th style="text-align:right">消費</th><th>備註</th>
+    <th>用餐日期</th><th>餐別</th><th>工號</th><th>消費</th><th>備註</th>
   </tr></thead><tbody>`;
 
   let prevKey = null;
   sorted.forEach(r => {
     const key = `${r.date}|${r.meal}`;
     if (prevKey && key !== prevKey) {
-      html += xlsSubtotalRow(prevKey, sumMap[prevKey]);
+      html += xlsSubtotalRow(prevKey, sumMap[prevKey], normalMap[prevKey] || 0, mtgMap[prevKey] || 0);
     }
     prevKey = key;
     const noteStyle = r.note ? 'color:#e9a246' : 'color:#555';
-    html += `<tr>
+    const empStyle = r.isMeeting ? 'color:#2ed573;font-weight:600' : '';
+    const meetingTag = r.isMeeting ? ' <span style="font-size:11px;background:rgba(46,213,115,0.15);border:1px solid #2ed573;color:#2ed573;border-radius:10px;padding:1px 6px">會議餐</span>' : '';
+    html += `<tr data-meeting="${r.isMeeting ? '1' : '0'}">
       <td>${r.date}</td>
       <td>${r.meal}</td>
-      <td style="text-align:right">${r.amt.toLocaleString()}</td>
+      <td style="${empStyle}">${r.empNo}${meetingTag}</td>
+      <td>${r.amt.toLocaleString()}</td>
       <td style="${noteStyle}">${r.note}</td>
     </tr>`;
   });
-  if (prevKey) html += xlsSubtotalRow(prevKey, sumMap[prevKey]);
+  if (prevKey) html += xlsSubtotalRow(prevKey, sumMap[prevKey], normalMap[prevKey] || 0, mtgMap[prevKey] || 0);
   html += '</tbody>';
   table.innerHTML = html;
 
-  // 下載按鈕
+  // 篩選按鈕
+  const normalCount  = sorted.filter(r => !r.isMeeting).length;
+  const meetingCount = sorted.filter(r =>  r.isMeeting).length;
+  document.getElementById('xls-filter-btns').innerHTML =
+    `<button class="filter-btn active" onclick="filterXLS('all')">全部 ${sorted.length}</button>` +
+    `<button class="filter-btn" onclick="filterXLS('normal')">一般 ${normalCount}</button>` +
+    (meetingCount ? `<button class="filter-btn" onclick="filterXLS('meeting')" style="border-color:#2ed573;color:#2ed573">會議餐 ${meetingCount}</button>` : '');
+
+  // 下載按鈕（Excel 三分頁）
   document.getElementById('btn-dl-xls').onclick = () => {
-    const lines = [];
-    let prevKey = null;
-    sorted.forEach(r => {
-      const key = `${r.date}|${r.meal}`;
-      if (prevKey && key !== prevKey) {
-        lines.push(['小計','',sumMap[prevKey],''].map(csvEscape).join(','));
-      }
-      prevKey = key;
-      lines.push([r.date, r.meal, r.amt, r.note].map(csvEscape).join(','));
+    loadExcelJS(async () => {
+      const wb = new ExcelJS.Workbook();
+
+      const buildSheet = (name, rows) => {
+        const ws = wb.addWorksheet(name);
+        ws.columns = [
+          { width: 13 }, { width: 9 }, { width: 14 }, { width: 12 }, { width: 30 },
+        ];
+        const hdrRow = ws.addRow(['用餐日期', '餐別', '工號', '消費', '備註']);
+        hdrRow.eachCell(cell => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+          cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        });
+        hdrRow.height = 20;
+
+        let prevKey = null, groupStartRow = 2, curRow = 2;
+
+        const flushSubtotal = (key) => {
+          const r1 = groupStartRow, r2 = curRow - 1;
+          const [d, m] = key.split('|');
+          const mtgAmt = (name === '全部' && mtgMap[key]) ? mtgMap[key] : 0;
+          const mtgNote = mtgAmt > 0 ? `（不含會議餐 ${mtgAmt.toLocaleString()} 元）` : '';
+          const sr = ws.addRow(['', '', `${d.slice(5)} ${m} 小計`, 0, mtgNote]);
+          sr.getCell(4).value = { formula: `SUM(D${r1}:D${r2})` };
+          sr.eachCell({ includeEmpty: true }, cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF59D' } };
+            cell.font = { bold: true };
+          });
+          sr.getCell(3).alignment = { horizontal: 'left' };
+          sr.getCell(4).numFmt = '#,##0';
+          sr.getCell(4).alignment = { horizontal: 'right' };
+          curRow++;
+          groupStartRow = curRow;
+        };
+
+        rows.forEach(r => {
+          const key = `${r.date}|${r.meal}`;
+          if (prevKey && key !== prevKey) flushSubtotal(prevKey);
+          prevKey = key;
+          const dr = ws.addRow([r.date, r.meal, r.empNo, r.amt, r.note]);
+          if (r.isMeeting) {
+            dr.getCell(3).font = { bold: true, color: { argb: 'FF2ED573' } };
+            dr.getCell(4).font = { bold: true, color: { argb: 'FF2ED573' } };
+          }
+          dr.getCell(4).numFmt = '#,##0';
+          curRow++;
+        });
+        if (prevKey) flushSubtotal(prevKey);
+      };
+
+      buildSheet('全部', sorted);
+      buildSheet('一般', sorted.filter(r => !r.isMeeting));
+      if (sorted.some(r => r.isMeeting))
+        buildSheet('會議餐', sorted.filter(r => r.isMeeting));
+
+      const buf = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `刷餐明細.xlsx`; a.click();
+      URL.revokeObjectURL(url);
     });
-    if (prevKey) lines.push(['小計','',sumMap[prevKey],''].map(csvEscape).join(','));
-    const content = '\uFEFF用餐日期,餐別,消費,備註\n' + lines.join('\n');
-    const shortFab = (selectedFab || '').replace(/[/\\:*?"<>|]/g, '_');
-    downloadBlob(content, `刷餐明細_${shortFab}.csv`);
   };
 }
 
-function xlsSubtotalRow(key, total) {
+function xlsSubtotalRow(key, total, normalTotal, mtgTotal) {
   const [date, meal] = key.split('|');
-  return `<tr style="background:#0f2a4a;font-weight:600;color:#7ec8e3;border-top:1px solid #1e4080">
-    <td colspan="2" style="text-align:right;color:#7ec8e3;font-size:14px;letter-spacing:1px">${date.slice(5)} ${meal} 小計</td>
-    <td style="text-align:right">${total.toLocaleString()}</td>
-    <td></td>
+  const label = `${date.slice(5)} ${meal}`;
+  const style = 'background:#0f2a4a;font-weight:600;color:#7ec8e3;border-top:1px solid #1e4080';
+  const mtgNote = mtgTotal > 0 ? ` <span style="font-size:12px;color:#2ed573;font-weight:400">（不含會議餐 ${mtgTotal.toLocaleString()} 元）</span>` : '';
+
+  const allRow = `<tr data-subtotal="all" style="${style}">
+    <td colspan="3" style="text-align:right;font-size:14px;letter-spacing:1px">${label} 小計</td>
+    <td>${total.toLocaleString()}${mtgNote}</td><td></td>
   </tr>`;
+  const normalRow = normalTotal > 0 ? `<tr data-subtotal="normal" style="${style};display:none">
+    <td colspan="3" style="text-align:right;font-size:14px;letter-spacing:1px">${label} 一般小計</td>
+    <td>${normalTotal.toLocaleString()}</td><td></td>
+  </tr>` : '';
+  const mtgRow = mtgTotal > 0 ? `<tr data-subtotal="meeting" style="${style};display:none">
+    <td colspan="3" style="text-align:right;font-size:14px;letter-spacing:1px;color:#2ed573">${label} 會議餐小計</td>
+    <td style="color:#2ed573">${mtgTotal.toLocaleString()}</td><td></td>
+  </tr>` : '';
+
+  return allRow + normalRow + mtgRow;
 }
 
 // 步驟二「前往比對」按鈕
@@ -1048,7 +1171,11 @@ function runCompare() {
   targetRows.forEach(r => {
     const dateKey = normalizeDate(r.date) || r.date;
     const key = `${dateKey}|${r.meal}`;
-    if (!groupMap[key]) groupMap[key] = { csvRecv: 0, csvRemain: 0, csvSwipe: 0, hxSwipe: hxLookup[key] || 0 };
+    if (!groupMap[key]) groupMap[key] = {
+      csvRecv: 0, csvRemain: 0, csvSwipe: 0,
+      hxSwipe: hxLookup[key] || 0,
+      hxMeeting: meetingLookup[key] || 0,
+    };
     groupMap[key].csvRecv   += r.recv;
     groupMap[key].csvRemain += r.remain;
     groupMap[key].csvSwipe  += r.swipe;
@@ -1057,7 +1184,8 @@ function runCompare() {
   // 第二步：判斷每組的比對結果
   let matchCount = 0, diffCount = 0, meetingCount = 0;
   Object.entries(groupMap).forEach(([key, g]) => {
-    if (meetingKeys.has(key)) {
+    const meal = key.split('|')[1];
+    if (meal === '下午茶') {
       g.result = 'meeting';
       meetingCount++;
     } else if (Math.abs(g.hxSwipe - g.csvSwipe) < 0.01) {
@@ -1109,27 +1237,39 @@ function runCompare() {
     const [d, m] = key.split('|');
     const label = `${d.slice(5)} ${m}`;  // MM/DD 時段
 
-    const diff = g.csvSwipe - g.hxSwipe;  // 正=彙總報表多，負=彙總報表少
-    let resultHtml, resultCls;
+    let resultHtml, resultCls, csvCell, hxCell, meetingCell;
     if (g.result === 'meeting') {
-      resultHtml = '會議餐';
-      resultCls = 'cmp-match';
-    } else if (Math.abs(diff) < 0.01) {
-      resultHtml = '✓ 相符';
-      resultCls = 'cmp-match';
+      // 下午茶：直接列為會議餐，不做比對
+      csvCell     = `<span style="color:#2ed573;font-weight:600">${g.csvSwipe.toLocaleString()}</span>`;
+      hxCell      = '—';
+      meetingCell = '—';
+      resultHtml  = '會議餐';
+      resultCls   = 'cmp-match';
     } else {
-      const sign = diff > 0 ? '+' : '';
-      const tip = diff > 0
-        ? '彙總報表刷餐金額較多，可能為報廢數量漏填'
-        : '彙總報表刷餐金額較少，可能為報廢數量填多或資料缺漏';
-      resultHtml = `彙總報表${diff > 0 ? '多' : '少'} ${sign}${diff.toLocaleString()} <span title="${tip}" style="cursor:help;opacity:0.6;font-size:12px">ⓘ</span>`;
-      resultCls = 'cmp-diff';
+      const diff = g.csvSwipe - g.hxSwipe;
+      csvCell     = g.csvSwipe.toLocaleString();
+      hxCell      = g.hxSwipe > 0 ? g.hxSwipe.toLocaleString() : '—';
+      meetingCell = g.hxMeeting > 0
+        ? `<span style="color:#2ed573;font-weight:600">${g.hxMeeting.toLocaleString()}</span>`
+        : '—';
+      if (Math.abs(diff) < 0.01) {
+        resultHtml = '✓ 相符';
+        resultCls  = 'cmp-match';
+      } else {
+        const sign = diff > 0 ? '+' : '';
+        const tip  = diff > 0
+          ? '彙總報表刷餐金額較多，可能為報廢數量漏填'
+          : '彙總報表刷餐金額較少，可能為報廢數量填多或資料缺漏';
+        resultHtml = `彙總報表${diff > 0 ? '多' : '少'} ${sign}${diff.toLocaleString()} <span title="${tip}" style="cursor:help;opacity:0.6;font-size:12px">ⓘ</span>`;
+        resultCls  = 'cmp-diff';
+      }
     }
 
-    tableRows += `<tr data-result="${g.result}">
+    tableRows += `<tr data-result="${g.result}" data-meeting="${g.hxMeeting > 0 ? '1' : '0'}">
       <td>${label}</td>
-      <td style="text-align:center">${g.result === 'meeting' ? '—' : g.csvSwipe.toLocaleString()}</td>
-      <td style="text-align:center">${g.result === 'meeting' ? '—' : (g.hxSwipe > 0 ? g.hxSwipe.toLocaleString() : '—')}</td>
+      <td style="text-align:center">${csvCell}</td>
+      <td style="text-align:center">${hxCell}</td>
+      <td style="text-align:center">${meetingCell}</td>
       <td class="${resultCls}" style="text-align:center">${resultHtml}</td>
     </tr>`;
   });
@@ -1139,8 +1279,9 @@ function runCompare() {
       <table>
         <thead><tr>
           <th>日期 時段</th>
-          <th title="計算：應收款項 − 剩餘金額（來自彙總報表）" style="cursor:help;text-align:center">彙總報表 ⓘ</th>
-          <th title="來源：客戶提供的浩華刷餐明細 XLS 消費加總" style="cursor:help;text-align:center">刷餐明細 ⓘ</th>
+          <th title="計算：應收款項 − 剩餘金額（來自彙總報表）；下午茶直接列為會議餐不比對" style="cursor:help;text-align:center">彙總報表 ⓘ</th>
+          <th title="來源：浩華刷餐明細中，工號非4位數字的消費加總" style="cursor:help;text-align:center">刷餐明細 ⓘ</th>
+          <th title="來源：浩華刷餐明細中，工號僅4位數字的消費加總（不納入比對）" style="cursor:help;text-align:center;color:#2ed573">會議餐 ⓘ</th>
           <th style="text-align:center">比對結果</th>
         </tr></thead>
         <tbody>${tableRows}</tbody>
@@ -1184,6 +1325,25 @@ function runCompare() {
   setStepState(3);
 }
 
+function filterXLS(type) {
+  document.querySelectorAll('#xls-filter-btns .filter-btn').forEach(btn => btn.classList.remove('active'));
+  event.target.classList.add('active');
+  document.querySelectorAll('#tbl-xls-detail tbody tr').forEach(tr => {
+    const subtotal = tr.dataset.subtotal;
+    if (subtotal) {
+      if (type === 'all')          tr.style.display = subtotal === 'all'     ? '' : 'none';
+      else if (type === 'normal')  tr.style.display = subtotal === 'normal'  ? '' : 'none';
+      else                         tr.style.display = subtotal === 'meeting' ? '' : 'none';
+      return;
+    }
+    let show;
+    if (type === 'all')          show = true;
+    else if (type === 'meeting') show = tr.dataset.meeting === '1';
+    else                         show = tr.dataset.meeting === '0';
+    tr.style.display = show ? '' : 'none';
+  });
+}
+
 function filterCompare(type) {
   // 更新按鈕 active 狀態
   ['filter-all','filter-match','filter-meeting','filter-diff'].forEach(id => {
@@ -1196,11 +1356,11 @@ function filterCompare(type) {
 
   // 篩選表格列
   document.querySelectorAll('#compare-grid tbody tr').forEach(tr => {
-    if (type === 'all' || tr.dataset.result === type) {
-      tr.style.display = '';
-    } else {
-      tr.style.display = 'none';
-    }
+    let show;
+    if (type === 'all') show = true;
+    else if (type === 'meeting') show = tr.dataset.result === 'meeting' || tr.dataset.meeting === '1';
+    else show = tr.dataset.result === type;
+    tr.style.display = show ? '' : 'none';
   });
 }
 
@@ -1263,6 +1423,17 @@ function loadSheetJS(cb) {
   s.src = 'https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js';
   s.onload = () => { sheetJSLoaded = true; cb(); };
   s.onerror = () => showStatus('st-xls', '無法載入 SheetJS（請確認網路連線）', 'error');
+  document.head.appendChild(s);
+}
+
+// ── 動態載入 ExcelJS ──
+let excelJSLoaded = false;
+function loadExcelJS(cb) {
+  if (excelJSLoaded) { cb(); return; }
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+  s.onload = () => { excelJSLoaded = true; cb(); };
+  s.onerror = () => showStatus('st-csv', '無法載入 ExcelJS（請確認網路連線）', 'error');
   document.head.appendChild(s);
 }
 </script>
